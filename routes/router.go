@@ -7,19 +7,23 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler) *mux.Router {
+func SetupRouter(
+	userHandler *handlers.UserHandler,
+	invoiceHandler *handlers.InvoiceHandler,
+) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
 	r.HandleFunc("/login", userHandler.Login).Methods("POST")
 	r.HandleFunc("/register", userHandler.RegisterUser).Methods("POST")
+	r.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 
 	// //sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
 
 	// //authenticated routes
-
+	
 
 	return r
 

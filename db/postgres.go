@@ -8,13 +8,21 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"github.com/joho/godotenv"
 )
 
 var DB *gorm.DB
 
 func InitDb() {
+   err := godotenv.Load()
+   fmt.Println("DB_HOST:", os.Getenv("DB_HOST"))
+   fmt.Println("DB_USER:", os.Getenv("DB_USER"))
+   fmt.Println("DB_NAME:", os.Getenv("DB_NAME"))
+   fmt.Println("DB_PORT:", os.Getenv("DB_PORT"))
+   if err != nil {
+	   log.Fatal("Error loading .env file")
+}
 	//connect to database
-	var err error
 	connStr := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		os.Getenv("DB_HOST"),
@@ -30,7 +38,7 @@ func InitDb() {
 	}
 
 	//migrate the schema
-	err = DB.AutoMigrate(models.User{})
+	err = DB.AutoMigrate(&models.User{}, &models.Invoice{})
 	if err != nil {
 		log.Fatal("failed to migrate schema", err)
 	}
