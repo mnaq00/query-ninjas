@@ -16,16 +16,18 @@ func main() {
 
 	// initialize repositories
 	userRepo := &repository.UserRepo{}
-	
+	clientRepo := &repository.ClientRepo{}
 
 	// initialize service
 	userService := &services.UserService{Repo: userRepo}
-
+    clientService := &services.ClientService{Repo: clientRepo}
+	
 	// initialize handlers
 	userHandler := &handlers.UserHandler{userService}
-
+    clientHandler := &handlers.ClientHandler{ClientService: clientService}
+	
 	//routes
-	r := routes.SetupRouter(userHandler)
+	r := routes.SetupRouter(userHandler, clientHandler)
 
 	//start server
 	err := http.ListenAndServe(":8080", r)

@@ -7,7 +7,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func SetupRouter(userHandler *handlers.UserHandler) *mux.Router {
+func SetupRouter(userHandler *handlers.UserHandler, clientHandler *handlers.ClientHandler) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
@@ -19,6 +19,7 @@ func SetupRouter(userHandler *handlers.UserHandler) *mux.Router {
 	protected.Use(middleware.AuthMiddleware)
 
 	// //authenticated routes
+	r.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
 
 
 	return r
