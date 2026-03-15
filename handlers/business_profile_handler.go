@@ -34,7 +34,6 @@ func (h *BusinessHandler) CreateBusinessProfile(w http.ResponseWriter, r *http.R
 }
 
 func (h *BusinessHandler) GetBusinessProfile(w http.ResponseWriter, r *http.Request) {
-
 	// collect business profile
 	idStr := r.URL.Query().Get("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
