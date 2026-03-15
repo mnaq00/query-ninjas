@@ -19,3 +19,7 @@ func (r *ClientRepo) GetClientByEmail(email string) (*models.Client, error) {
 	}
 	return &client, nil
 }
+
+func (r *ClientRepo) UpdateClient(client *models.Client) error {
+	return db.DB.Save(client).Error
+}

@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-
+    "invoiceSys/models"
 	"invoiceSys/services"
 )
 
@@ -46,5 +46,32 @@ func (h *ClientHandler) AddClient(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Client saved successfully",
 		"client":  client,
+	})
+}
+
+func (h *ClientHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var client models.Client
+	err := json.NewDecoder(r.Body).Decode(&client)
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	updatedClient, err := h.ClientService.UpdateClient(&client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Client updated successfully",
+		"client":  updatedClient,
 	})
 }
