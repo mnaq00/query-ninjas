@@ -5,7 +5,7 @@ import (
 	"invoiceSys/models"
 	"log"
 	"os"
-
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -14,7 +14,10 @@ var DB *gorm.DB
 
 func InitDb() {
 	//connect to database
-	var err error
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("no .env file found")
+	}
 	connStr := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		os.Getenv("DB_HOST"),
@@ -30,7 +33,7 @@ func InitDb() {
 	}
 
 	//migrate the schema
-	err = DB.AutoMigrate(models.User{})
+	err = DB.AutoMigrate(models.User{}, &models.Business{})
 	if err != nil {
 		log.Fatal("failed to migrate schema", err)
 	}
