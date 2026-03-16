@@ -10,7 +10,7 @@ import (
 func SetupRouter(
 	userHandler *handlers.UserHandler,
 	invoiceHandler *handlers.InvoiceHandler,
-, clientHandler *handlers.ClientHandler) *mux.Router {
+ clientHandler *handlers.ClientHandler) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
