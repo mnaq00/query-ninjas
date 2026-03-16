@@ -24,9 +24,11 @@ func SetupRouter(
 	protected.HandleFunc("/business/{id}", businessHandler.UpdateBusiness).Methods("PUT")
 
 	// //authenticated routes
+	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
+	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
+	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
 	r.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
 
 
 	return r
-
 }
