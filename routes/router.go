@@ -8,7 +8,7 @@ import (
 )
 
 func SetupRouter(
-	userHandler *handlers.UserHandler,
+	userHandler *handlers.UserHandler, businessHandler *handlers.BusinessHandler,
 	invoiceHandler *handlers.InvoiceHandler,
  clientHandler *handlers.ClientHandler) *mux.Router {
 	r := mux.NewRouter()
@@ -21,6 +21,7 @@ func SetupRouter(
 	// //sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
+	protected.HandleFunc("/business/{id}", businessHandler.UpdateBusiness).Methods("PUT")
 
 	// //authenticated routes
 	r.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
