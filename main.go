@@ -21,22 +21,22 @@ func main() {
 	businessRepo := &repository.BusinessRepo{}
 
 	invoiceRepo := &repository.InvoiceRepo{}
-clientRepo := &repository.ClientRepo{}
+	clientRepo := &repository.ClientRepo{}
 
 	// initialize service
 	userService := &services.UserService{Repo: userRepo}
 	businessService := &services.BusinessService{Repo: businessRepo}
 
 	invoiceService := &services.InvoiceService{Repo: invoiceRepo}
-    clientService := &services.ClientService{Repo: clientRepo}
-	
+	clientService := &services.ClientService{Repo: clientRepo}
+
 	// initialize handlers
-	userHandler := &handlers.UserHandler{Service: Service: userService}
+	userHandler := &handlers.UserHandler{Service: userService}
 	businessHandler := &handlers.BusinessHandler{Service: businessService}
 
 	invoiceHandler := &handlers.InvoiceHandler{Service: *invoiceService}
-    clientHandler := &handlers.ClientHandler{ClientService: clientService}
-	
+	clientHandler := &handlers.ClientHandler{ClientService: clientService}
+
 	//routes
 	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler)
 
@@ -46,5 +46,5 @@ clientRepo := &repository.ClientRepo{}
 	if err != nil {
 		log.Fatal("failed to start server", err)
 	}
-	
+
 }
