@@ -10,7 +10,7 @@ import (
 func SetupRouter(
 	userHandler *handlers.UserHandler,
 	invoiceHandler *handlers.InvoiceHandler,
-) *mux.Router {
+, clientHandler *handlers.ClientHandler) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
@@ -23,7 +23,8 @@ func SetupRouter(
 	protected.Use(middleware.AuthMiddleware)
 
 	// //authenticated routes
-	
+	r.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
+
 
 	return r
 
