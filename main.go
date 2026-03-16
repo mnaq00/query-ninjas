@@ -19,7 +19,6 @@ func main() {
 	// initialize repositories
 	userRepo := &repository.UserRepo{}
 	businessRepo := &repository.BusinessRepo{}
-
 	invoiceRepo := &repository.InvoiceRepo{}
 	clientRepo := &repository.ClientRepo{}
 

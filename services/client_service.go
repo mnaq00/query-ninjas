@@ -50,3 +50,26 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	return client, nil
 
 }
+
+func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, error) {
+	client.Name = strings.TrimSpace(client.Name)
+	client.Email = strings.TrimSpace(strings.ToLower(client.Email))
+	client.BillingAddress = strings.TrimSpace(client.BillingAddress)
+
+	if client.Name == "" {
+		return nil, errors.New("Client name is required")
+	}
+	if client.Email == "" {
+		return nil, errors.New("Client email is required")
+	}
+	if client.BillingAddress == "" {
+		return nil, errors.New("Billing address is required")
+	}
+
+	err := s.Repo.UpdateClient(client)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}

@@ -18,17 +18,17 @@ func SetupRouter(
 	r.HandleFunc("/register", userHandler.RegisterUser).Methods("POST")
 	r.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 
-	// //sub router for protected routes
+	// sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
 	protected.HandleFunc("/business/{id}", businessHandler.UpdateBusiness).Methods("PUT")
 
-	// //authenticated routes
+	// authenticated routes
+	protected.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
+	protected.HandleFunc("/clients", clientHandler.UpdateClient).Methods("PUT")
 	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
-	r.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
-
 
 	return r
 }
