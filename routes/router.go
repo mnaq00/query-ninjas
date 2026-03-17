@@ -21,7 +21,7 @@ func SetupRouter(
 	// sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
-	protected.HandleFunc("/business/{id}", businessHandler.UpdateBusiness).Methods("PUT")
+	
 
 	// authenticated routes
 	protected.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
