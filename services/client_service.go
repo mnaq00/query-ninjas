@@ -26,7 +26,7 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 		return nil, errors.New("Client email is required")
 	}
 	if billingAddress == "" {
-        return nil, errors.New("Billing Address is required")
+		return nil, errors.New("Billing Address is required")
 	}
 	_, err := s.Repo.GetClientByEmail(email)
 	if err == nil {
@@ -37,8 +37,8 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	}
 
 	client := &models.Client{
-		Name:          name,
-		Email:         email,
+		Name:           name,
+		Email:          email,
 		BillingAddress: billingAddress,
 	}
 

@@ -8,7 +8,6 @@ import (
 	"invoiceSys/models"
 	"log"
 	"os"
-
 )
 
 var DB *gorm.DB
@@ -38,7 +37,7 @@ func InitDb() {
 	}
 
 	//migrate the schema
-	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{})
+	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{},)
 	if err != nil {
 		log.Fatal("failed to migrate schema", err)
 	}

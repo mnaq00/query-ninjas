@@ -10,7 +10,6 @@ type BusinessProfileRepository interface {
 	GetBusinessProfile(id uint) (*models.Business, error)
 	CreateBusinessProfile(profile *models.Business) error
 	UpdateBusinessProfile(profile *models.Business) error
-	
 }
 
 func (r *BusinessRepo) GetBusinessProfile(id uint) (*models.Business, error) {

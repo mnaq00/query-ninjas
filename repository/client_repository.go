@@ -14,7 +14,7 @@ func (r *ClientRepo) CreateClient(client *models.Client) error {
 func (r *ClientRepo) GetClientByEmail(email string) (*models.Client, error) {
 	var client models.Client
 	err := db.DB.Where("email = ?", email).First(&client).Error
-    if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	return &client, nil
