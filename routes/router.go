@@ -31,6 +31,7 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
+	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
 	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 
 	return r
