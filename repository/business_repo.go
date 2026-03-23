@@ -10,8 +10,7 @@ type BusinessProfileRepository interface {
 	GetBusinessProfile(id uint) (*models.Business, error)
 	CreateBusinessProfile(profile *models.Business) error
 	UpdateBusinessProfile(profile *models.Business) error
-	GetByID(id uint) (*models.Business, error)
-	Update(b *models.Business) error
+	
 }
 
 func (r *BusinessRepo) GetBusinessProfile(id uint) (*models.Business, error) {
@@ -37,14 +36,4 @@ func (r *BusinessRepo) UpdateBusinessProfile(profile *models.Business) error {
 		return err
 	}
 	return nil
-}
-
-func (r *BusinessRepo) GetByID(id uint) (*models.Business, error) {
-	var b models.Business
-	err := db.DB.First(&b, id).Error
-	return &b, err
-}
-
-func (r *BusinessRepo) Update(b *models.Business) error {
-	return db.DB.Save(b).Error
 }

@@ -10,25 +10,6 @@ type BusinessService struct {
 	Repo *repository.BusinessRepo
 }
 
-func (s *BusinessService) UpdateBusiness(id uint, data *models.Business) (*models.Business, error) {
-	b, err := s.Repo.GetByID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	b.BusinessName = data.BusinessName
-	b.Address = data.Address
-	b.Phone = data.Phone
-	b.Email = data.Email
-
-	err = s.Repo.Update(b)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
-}
-
 func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 
 	// Check if business already exists
@@ -44,6 +25,10 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 
 	if req.Email == "" {
 		return errors.New("business email is required")
+	}
+
+	if req.Phone == "" {
+		return errors.New("phone number is required")
 	}
 
 	//Save business profile to database
