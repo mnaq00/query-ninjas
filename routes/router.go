@@ -8,9 +8,12 @@ import (
 )
 
 func SetupRouter(
-	userHandler *handlers.UserHandler, businessHandler *handlers.BusinessHandler,
+	userHandler *handlers.UserHandler,
+	businessHandler *handlers.BusinessHandler,
 	invoiceHandler *handlers.InvoiceHandler,
- clientHandler *handlers.ClientHandler) *mux.Router {
+	clientHandler *handlers.ClientHandler,
+	productHandler *handlers.ProductHandler,
+) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
@@ -21,7 +24,6 @@ func SetupRouter(
 	// sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
-	
 
 	// authenticated routes
 	protected.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
@@ -29,6 +31,8 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
+	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
+	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 
 	return r
 }

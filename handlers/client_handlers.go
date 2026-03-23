@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
-	"net/http"
-    "invoiceSys/models"
+	"invoiceSys/models"
 	"invoiceSys/services"
+	"net/http"
 )
 
 type ClientHandler struct {

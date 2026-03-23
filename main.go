@@ -21,6 +21,7 @@ func main() {
 	businessRepo := &repository.BusinessRepo{}
 	invoiceRepo := &repository.InvoiceRepo{}
 	clientRepo := &repository.ClientRepo{}
+	productRepo := &repository.ProductRepo{}
 
 	// initialize service
 	userService := &services.UserService{Repo: userRepo}
@@ -28,6 +29,7 @@ func main() {
 
 	invoiceService := &services.InvoiceService{Repo: invoiceRepo}
 	clientService := &services.ClientService{Repo: clientRepo}
+	productService := &services.ProductService{Repo: productRepo}
 
 	// initialize handlers
 	userHandler := &handlers.UserHandler{Service: userService}
@@ -35,9 +37,10 @@ func main() {
 
 	invoiceHandler := &handlers.InvoiceHandler{Service: *invoiceService}
 	clientHandler := &handlers.ClientHandler{ClientService: clientService}
+	productHandler := &handlers.ProductHandler{ProductService: productService}
 
 	//routes
-	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler)
+	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler, productHandler)
 
 	//start server
 	fmt.Println("server started on :8080")
