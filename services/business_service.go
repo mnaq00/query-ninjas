@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"regexp"
 	"invoiceSys/models"
 	"invoiceSys/repository"
 )
@@ -18,20 +19,28 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 		return errors.New("business already exists")
 	}
 
-	//Check if business name or email is empty
+	// Check if business name is empty
 	if req.BusinessName == "" {
 		return errors.New("business name is required")
 	}
 
+	// Check if email is empty
 	if req.Email == "" {
 		return errors.New("business email is required")
 	}
 
+	// Check email format
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, req.Email)
+	if !matched {
+		return errors.New("invalid email format")
+	}
+
+	// Check if phone number is empty
 	if req.Phone == "" {
 		return errors.New("phone number is required")
 	}
 
-	//Save business profile to database
+	// Save business profile to database
 	err = s.Repo.CreateBusinessProfile(req)
 	if err != nil {
 		return err
@@ -39,8 +48,7 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 	return nil
 }
 
-//function to get business profile
-
+// function to get business profile
 func (s *BusinessService) GetBusinessProfile(id uint) (*models.Business, error) {
 	profile, err := s.Repo.GetBusinessProfile(id)
 	if err != nil {
@@ -49,8 +57,7 @@ func (s *BusinessService) GetBusinessProfile(id uint) (*models.Business, error) 
 	return profile, nil
 }
 
-//function to update business profile
-
+// function to update business profile
 func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
 
 	// Check if business profile exists
@@ -59,16 +66,23 @@ func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
 		return errors.New("business profile not found")
 	}
 
-	//Check if business name or email is empty
+	// Check if business name is empty
 	if req.BusinessName == "" {
 		return errors.New("business name is required")
 	}
 
+	// Check if email is empty
 	if req.Email == "" {
 		return errors.New("business email is required")
 	}
 
-	//Save business profile to database
+	// Check email format
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, req.Email)
+	if !matched {
+		return errors.New("invalid email format")
+	}
+
+	// Save business profile to database
 	err = s.Repo.UpdateBusinessProfile(req)
 	if err != nil {
 		return err

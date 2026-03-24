@@ -16,7 +16,7 @@ func SetupRouter(
 ) *mux.Router {
 	r := mux.NewRouter()
 
-	//public routes
+	// public routes
 	r.HandleFunc("/login", userHandler.Login).Methods("POST")
 	r.HandleFunc("/register", userHandler.RegisterUser).Methods("POST")
 	r.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
@@ -32,6 +32,8 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
 	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
+	protected.HandleFunc("/products", productHandler.CreateProduct).Methods("POST")
+	protected.HandleFunc("/products/{id}", productHandler.GetProduct).Methods("GET")
 	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 
 	return r
