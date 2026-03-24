@@ -4,6 +4,7 @@ import (
 	"errors"
 	"invoiceSys/models"
 	"invoiceSys/repository"
+	"time"
 )
 
 type InvoiceService struct {
@@ -28,4 +29,16 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 	req.Total = req.Subtotal + req.TaxAmount
 
 	return s.Repo.CreateInvoice(req)
+}
+
+func (s *InvoiceService) SearchByClient(customerName string) ([]models.Invoice, error) {
+	return s.Repo.SearchByClient(customerName)
+}
+
+func (s *InvoiceService) SearchByPaymentStatus(status string) ([]models.Invoice, error) {
+	return s.Repo.SearchByPaymentStatus(status)
+}
+
+func (s *InvoiceService) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error) {
+	return s.Repo.MarkInvoicePaid(id, paymentDate)
 }

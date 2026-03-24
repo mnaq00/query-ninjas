@@ -10,18 +10,16 @@ import (
 func SetupRouter(
 	userHandler *handlers.UserHandler, businessHandler *handlers.BusinessHandler,
 	invoiceHandler *handlers.InvoiceHandler,
- clientHandler *handlers.ClientHandler) *mux.Router {
+	clientHandler *handlers.ClientHandler) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
 	r.HandleFunc("/login", userHandler.Login).Methods("POST")
 	r.HandleFunc("/register", userHandler.RegisterUser).Methods("POST")
-	r.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 
 	// sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware)
-	protected.HandleFunc("/business/{id}", businessHandler.UpdateBusiness).Methods("PUT")
 
 	// authenticated routes
 	protected.HandleFunc("/clients", clientHandler.AddClient).Methods("POST")
@@ -29,6 +27,10 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
+	protected.HandleFunc("/invoices/searchbyclient", invoiceHandler.SearchByClient).Methods("GET")
+	protected.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
+	protected.HandleFunc("/invoices/ViewInvoiceStatus", invoiceHandler.ViewInvoiceStatus).Methods("GET")
+	protected.HandleFunc("/invoices/{id}/paid", invoiceHandler.MarkInvoicePaid).Methods("PUT")
 
 	return r
 }
