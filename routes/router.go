@@ -8,9 +8,12 @@ import (
 )
 
 func SetupRouter(
-	userHandler *handlers.UserHandler, businessHandler *handlers.BusinessHandler,
+	userHandler *handlers.UserHandler,
+	businessHandler *handlers.BusinessHandler,
 	invoiceHandler *handlers.InvoiceHandler,
-	clientHandler *handlers.ClientHandler) *mux.Router {
+	clientHandler *handlers.ClientHandler,
+	productHandler *handlers.ProductHandler,
+) *mux.Router {
 	r := mux.NewRouter()
 
 	//public routes
@@ -31,6 +34,8 @@ func SetupRouter(
 	protected.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 	protected.HandleFunc("/invoices/ViewInvoiceStatus", invoiceHandler.ViewInvoiceStatus).Methods("GET")
 	protected.HandleFunc("/invoices/{id}/paid", invoiceHandler.MarkInvoicePaid).Methods("PUT")
+	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
+	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 
 	return r
 }

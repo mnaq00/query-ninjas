@@ -19,4 +19,9 @@ type Invoice struct {
 	Total                    float64   `json:"total"`
 	Customer_payment_status  string    `json:"customer_payment_status"`
 	PaymentDate              time.Time `json:"payment_date"`
+
+	InvoiceNumber string        `json:"invoice_number"`
+	InvoiceDate   time.Time     `json:"invoice_date"`
+	ClientID      uint          `json:"client_id"`
+	Items         []InvoiceItem `json:"items" gorm:"foreignKey:InvoiceID"`
 }
