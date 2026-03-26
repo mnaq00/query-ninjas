@@ -13,6 +13,7 @@ type InvoiceRepository interface {
 	SearchByPaymentStatus(status string) ([]models.Invoice, error)
 	MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error)
 	UpdateInvoice(id uint, invoice *models.Invoice) error
+	GetInvoiceByID(id uint) (*models.Invoice, error)
 }
 
 type InvoiceRepo struct{}
@@ -63,20 +64,32 @@ func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.I
 func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 	invoice.ID = id
 
-if err := db.DB.Save(invoice).Error; err != nil {
-	return err
-}
-
-if err := db.DB.Where("invoice_id = ?", id).Delete(&models.InvoiceItem{}).Error; err != nil {
-	return err
-}
-
-for _, item := range invoice.Items {
-	item.InvoiceID = invoice.ID
-	if err := db.DB.Create(&item).Error; err != nil {
+	if err := db.DB.Save(invoice).Error; err != nil {
 		return err
 	}
+
+	if err := db.DB.Where("invoice_id = ?", id).Delete(&models.InvoiceItem{}).Error; err != nil {
+		return err
+	}
+
+	for _, item := range invoice.Items {
+		item.InvoiceID = invoice.ID
+		if err := db.DB.Create(&item).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-return nil 
+// Robel
+func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
+	var invoice models.Invoice
+
+	err := db.DB.First(&invoice, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &invoice, nil
+
 }

@@ -21,3 +21,7 @@ func (r *ProductRepo) GetByID(id uint) (*models.Product, error) {
 func (r *ProductRepo) UpdateProduct(product *models.Product) error {
 	return db.DB.Save(product).Error
 }
+
+func (r *ProductRepo) CreateProduct(product *models.Product) error {
+	return db.DB.Create(product).Error
+}
