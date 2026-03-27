@@ -16,10 +16,9 @@ func SetupRouter(
 ) *mux.Router {
 	r := mux.NewRouter()
 
-	// public routes
+	//public routes
 	r.HandleFunc("/login", userHandler.Login).Methods("POST")
 	r.HandleFunc("/register", userHandler.RegisterUser).Methods("POST")
-	r.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 
 	// sub router for protected routes
 	protected := r.PathPrefix("/").Subrouter()
@@ -31,10 +30,16 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.CreateBusinessProfile).Methods("POST")
 	protected.HandleFunc("/business-profile", businessHandler.GetBusinessProfile).Methods("GET")
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
+	protected.HandleFunc("/invoices/searchbyclient", invoiceHandler.SearchByClient).Methods("GET")
+	protected.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
+	protected.HandleFunc("/invoices/{id}/draft", invoiceHandler.SaveInvoiceAsDraft).Methods("POST")
+	protected.HandleFunc("/invoices/ViewInvoiceStatus", invoiceHandler.ViewInvoiceStatus).Methods("GET")
+	protected.HandleFunc("/invoices/{id}/paid", invoiceHandler.MarkInvoicePaid).Methods("PUT")
 	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
+	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 	protected.HandleFunc("/products", productHandler.CreateProduct).Methods("POST")
 	protected.HandleFunc("/products/{id}", productHandler.GetProduct).Methods("GET")
-	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
+	protected.HandleFunc("/invoices/{id}/send", invoiceHandler.SendInvoice).Methods("POST")
 
 	return r
 }

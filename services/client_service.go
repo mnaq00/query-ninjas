@@ -2,9 +2,8 @@ package services
 
 import (
 	"errors"
-	"regexp"
 	"strings"
-
+	"regexp"
 	"invoiceSys/models"
 	"invoiceSys/repository"
 
@@ -26,7 +25,6 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	if email == "" {
 		return nil, errors.New("Client email is required")
 	}
-
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, email)
 	if !matched {
 		return nil, errors.New("invalid email format")
@@ -35,7 +33,6 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	if billingAddress == "" {
 		return nil, errors.New("Billing Address is required")
 	}
-
 	_, err := s.Repo.GetClientByEmail(email)
 	if err == nil {
 		return nil, errors.New("Client with this email already exists!")
@@ -56,6 +53,7 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	}
 
 	return client, nil
+
 }
 
 func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, error) {
@@ -69,7 +67,6 @@ func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, err
 	if client.Email == "" {
 		return nil, errors.New("Client email is required")
 	}
-
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, client.Email)
 	if !matched {
 		return nil, errors.New("invalid email format")

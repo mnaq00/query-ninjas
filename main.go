@@ -27,7 +27,11 @@ func main() {
 	userService := &services.UserService{Repo: userRepo}
 	businessService := &services.BusinessService{Repo: businessRepo}
 
-	invoiceService := &services.InvoiceService{Repo: invoiceRepo}
+	invoiceService := &services.InvoiceService{
+		Repo:            invoiceRepo,
+		ClientRepo:      clientRepo,
+		BusinessService: businessService,
+	}
 	clientService := &services.ClientService{Repo: clientRepo}
 	productService := &services.ProductService{Repo: productRepo}
 

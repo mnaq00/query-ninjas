@@ -2,12 +2,13 @@ package db
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"invoiceSys/models"
 	"log"
 	"os"
+
+	"github.com/joho/godotenv"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
@@ -39,8 +40,8 @@ func InitDb() {
 	//migrate the schema
 	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{},)
 	if err != nil {
-		log.Fatal("failed to migrate schema", err)
+		log.Fatal("Failed to migrate schema", err)
 	}
 
-	fmt.Println("connected to database successfully!")
+	fmt.Println("Connected to database successfully!")
 }
