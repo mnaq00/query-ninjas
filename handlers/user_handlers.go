@@ -21,8 +21,7 @@ func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// call service layer
-	err = h.Service.RegisterUser(&signUp)
+	token, err := h.Service.RegisterUser(&signUp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -30,17 +29,19 @@ func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	// Never return password (plain or hashed).
+	// Never return password (plain or hashed). Include JWT for immediate use in Authorization header.
 	json.NewEncoder(w).Encode(struct {
 		ID        uint      `json:"id"`
 		Username  string    `json:"username"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
+		Token     string    `json:"token"`
 	}{
 		ID:        signUp.ID,
 		Username:  signUp.Username,
 		CreatedAt: signUp.CreatedAt,
 		UpdatedAt: signUp.UpdatedAt,
+		Token:     token,
 	})
 }
 
