@@ -5,6 +5,7 @@ import (
 	"invoiceSys/models"
 	"invoiceSys/services"
 	"net/http"
+	"time"
 )
 
 type UserHandler struct {
@@ -27,9 +28,20 @@ func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//response
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(signUp)
+	// Never return password (plain or hashed).
+	json.NewEncoder(w).Encode(struct {
+		ID        uint      `json:"id"`
+		Username  string    `json:"username"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}{
+		ID:        signUp.ID,
+		Username:  signUp.Username,
+		CreatedAt: signUp.CreatedAt,
+		UpdatedAt: signUp.UpdatedAt,
+	})
 }
 
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
