@@ -32,7 +32,6 @@ func SetupRouter(
 	protected.HandleFunc("/business-profile", businessHandler.UpdateBusinessProfile).Methods("PUT")
 	protected.HandleFunc("/invoices/searchbyclient", invoiceHandler.SearchByClient).Methods("GET")
 	protected.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
-	protected.HandleFunc("/invoices/{id}/draft", invoiceHandler.SaveInvoiceAsDraft).Methods("POST")
 	protected.HandleFunc("/invoices/ViewInvoiceStatus", invoiceHandler.ViewInvoiceStatus).Methods("GET")
 	protected.HandleFunc("/invoices/{id}/paid", invoiceHandler.MarkInvoicePaid).Methods("PUT")
 	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")

@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"invoiceSys/models"
 	"invoiceSys/repository"
-	"io"
 	"mime/multipart"
-	"net/http"
 	"net/smtp"
 	"net/textproto"
 	"os"
@@ -21,10 +19,57 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
+// Hardcoded business logo for PDF invoices (path is relative to the server process working directory,
+// usually the backend module root when you run `go run .` from query-ninjas/query-ninjas).
+const invoicePDFLogoPath = "assets/QNF.jpg"
+
+// invoicePDFLogoWidthMM is the logo width on the page; height scales to preserve aspect ratio.
+const invoicePDFLogoWidthMM = 34.0
+
 type InvoiceService struct {
 	Repo            repository.InvoiceRepository
 	ClientRepo      *repository.ClientRepo
+	ProductRepo     *repository.ProductRepo
 	BusinessService *BusinessService
+}
+
+// enrichInvoiceItemsFromProducts fills name, product_name, and price from the catalog when product_id is set.
+func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceItem) error {
+	if items == nil || s.ProductRepo == nil {
+		return nil
+	}
+	for i := range *items {
+		item := &(*items)[i]
+		if item.ProductID == 0 {
+			continue
+		}
+		p, err := s.ProductRepo.GetByID(item.ProductID)
+		if err != nil {
+			return fmt.Errorf("product id %d not found", item.ProductID)
+		}
+		name := strings.TrimSpace(p.ProductName)
+		if name == "" {
+			name = strings.TrimSpace(p.Description)
+		}
+		if name == "" {
+			name = fmt.Sprintf("Product #%d", item.ProductID)
+		}
+		if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.ProductName) == "" {
+			item.Name = name
+			item.ProductName = name
+		} else if strings.TrimSpace(item.ProductName) == "" {
+			item.ProductName = strings.TrimSpace(item.Name)
+		} else if strings.TrimSpace(item.Name) == "" {
+			item.Name = strings.TrimSpace(item.ProductName)
+		}
+		if item.Price <= 0 {
+			item.Price = p.Price
+		}
+		if item.Price <= 0 {
+			return fmt.Errorf("product id %d has no valid price", item.ProductID)
+		}
+	}
+	return nil
 }
 
 // Musa
@@ -36,6 +81,10 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 
 	if len(req.Items) == 0 {
 		return errors.New("at least one invoice item is required")
+	}
+
+	if err := s.enrichInvoiceItemsFromProducts(&req.Items); err != nil {
+		return err
 	}
 
 	var subtotal float64
@@ -55,7 +104,8 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 	if req.TaxRate < 0 {
 		return errors.New("tax rate cannot be negative")
 	}
-	// this is saving cust name from selected client
+	// Snapshot current client name on the invoice row (for search/API). PDF/email always
+	// reload the client by client_id, so Bill To stays up to date when you send.
 	if s.ClientRepo == nil {
 		return errors.New("client repository not configured")
 	}
@@ -102,6 +152,10 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 		invoice.Customer_payment_status = existing.Customer_payment_status
 	}
 
+	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items); err != nil {
+		return err
+	}
+
 	var subtotal float64
 
 	for i := range invoice.Items {
@@ -109,6 +163,9 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 
 		if item.Quantity <= 0 {
 			return errors.New("quantity must be greater than zero")
+		}
+		if item.Price <= 0 {
+			return errors.New("item price must be greater than 0")
 		}
 
 		item.LineTotal = item.Price * float64(item.Quantity)
@@ -169,9 +226,22 @@ func (s *InvoiceService) SendInvoiceEmail(id uint) error {
 	if err != nil {
 		return errors.New("client not found")
 	}
+	if strings.TrimSpace(client.Email) == "" {
+		return errors.New("client has no email address; cannot send invoice")
+	}
+
+	// Keep stored customer_name in sync with the client record (e.g. after a rename).
+	if err := s.Repo.SyncInvoiceCustomerSnapshot(invoice.ID, client.Name); err != nil {
+		return err
+	}
+	invoice.CustomerName = client.Name
+
+	// Fill missing line labels from catalog (fixes PDF if DB rows lack name/product_name).
+	_ = s.enrichInvoiceItemsFromProducts(&invoice.Items)
 
 	var biz models.Business
 	if s.BusinessService != nil {
+		// Live business profile at send time — header/VAT/address on the PDF match DB.
 		// Assumption: a single business profile exists with ID=1.
 		// If you support multiple businesses later, pass business_id on the invoice.
 		profile, err := s.BusinessService.GetBusinessProfile(1)
@@ -377,55 +447,20 @@ func GenerateInvoicePDF(invoice *models.Invoice, biz *models.Business, client *m
 	pageW, pageH := pdf.GetPageSize()
 	contentW := pageW - leftMargin - rightMargin
 
-	// Optional logo (top-left). Supports either:
-	// - public URL in biz.LogoURL (https://...)
-	// - repo/local path in biz.LogoURL (e.g. assets/logo.png)
-	logoPath := strings.TrimSpace(biz.LogoURL)
-	logoW := 34.0
-	logoH := 0.0 // auto scale
 	headerTop := topMargin
-	headerMinBottom := headerTop + 34.0
-	var cleanupLogo func()
-	if logoPath != "" {
-		var localLogo string
-		if strings.HasPrefix(strings.ToLower(logoPath), "http://") || strings.HasPrefix(strings.ToLower(logoPath), "https://") {
-			resp, err := http.Get(logoPath)
-			if err == nil && resp != nil {
-				defer resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					ext := strings.ToLower(filepath.Ext(logoPath))
-					if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
-						ext = ".png"
-					}
-					f, err := os.CreateTemp("", "invoice-logo-*"+ext)
-					if err == nil {
-						if _, err := io.Copy(f, resp.Body); err == nil {
-							localLogo = f.Name()
-							cleanupLogo = func() { _ = os.Remove(localLogo) }
-						}
-						_ = f.Close()
-					}
-				}
-			}
-		} else {
-			// Treat as local path (relative to current working directory).
-			localLogo = logoPath
-		}
+	headerMinBottom := headerTop + invoicePDFLogoWidthMM
 
-		if localLogo != "" {
-			x := leftMargin
-			y := headerTop
-			// gofpdf can infer type from extension (PNG/JPG/JPEG).
-			pdf.ImageOptions(localLogo, x, y, logoW, logoH, false, gofpdf.ImageOptions{ReadDpi: true}, 0, "")
-		}
-	}
-	if cleanupLogo != nil {
-		defer cleanupLogo()
+	// Hardcoded logo (top-left). Business block starts after the logo so nothing overlaps.
+	logoGapMM := 10.0
+	logoUsedW := 0.0
+	if fi, err := os.Stat(invoicePDFLogoPath); err == nil && !fi.IsDir() {
+		pdf.ImageOptions(invoicePDFLogoPath, leftMargin, headerTop, invoicePDFLogoWidthMM, 0, false, gofpdf.ImageOptions{ReadDpi: true}, 0, "")
+		logoUsedW = invoicePDFLogoWidthMM + logoGapMM
 	}
 
-	// Business details (top-right) in a fixed header area to avoid overlap.
-	bizX := leftMargin + logoW + 10.0
-	bizW := contentW - (logoW + 10.0)
+	// Business details (top-right): full width if no logo file; otherwise to the right of the logo.
+	bizX := leftMargin + logoUsedW
+	bizW := contentW - logoUsedW
 	pdf.SetXY(bizX, headerTop)
 	pdf.SetFont("Arial", "B", 14)
 	pdf.MultiCell(bizW, 6, strings.TrimSpace(biz.BusinessName), "", "R", false)

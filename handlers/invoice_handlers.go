@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"invoiceSys/models"
@@ -43,38 +44,6 @@ func (h *InvoiceHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Invoice created successfully",
 		"invoice": req,
-	})
-}
-
-func (h *InvoiceHandler) SaveInvoiceAsDraft(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	idParam := vars["id"]
-
-	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "invalid invoice id",
-		})
-		return
-	}
-
-	invoice, err := h.Service.SaveInvoiceDraft(uint(id))
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "invoice saved as draft",
-		"invoice": invoice,
 	})
 }
 
@@ -217,16 +186,18 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	// Robel
 	err = h.Service.SendInvoiceEmail(uint(id))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		// Draft invoices are a client error; everything else is treated as internal.
-		if err.Error() == "draft invoices cannot be sent" {
-			w.WriteHeader(http.StatusBadRequest)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		if msg == "draft invoices cannot be sent" ||
+			msg == "client has no email address; cannot send invoice" ||
+			strings.HasPrefix(msg, "SMTP not configured") ||
+			strings.HasPrefix(msg, "SMTP_FROM not configured") {
+			status = http.StatusBadRequest
 		}
+		w.WriteHeader(status)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": err.Error(),
 		})

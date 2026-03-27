@@ -5,6 +5,8 @@ import (
 	"invoiceSys/db"
 	"invoiceSys/models"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type InvoiceRepository interface {
@@ -16,12 +18,33 @@ type InvoiceRepository interface {
 	SetInvoiceSent(id uint, paymentStatus string) (*models.Invoice, error)
 	UpdateInvoice(id uint, invoice *models.Invoice) error
 	GetInvoiceByID(id uint) (*models.Invoice, error)
+	// SyncInvoiceCustomerSnapshot updates stored customer_name from the current client (e.g. when sending).
+	SyncInvoiceCustomerSnapshot(id uint, customerName string) error
 }
 
 type InvoiceRepo struct{}
 
 func (r *InvoiceRepo) CreateInvoice(invoice *models.Invoice) error {
-	return db.DB.Create(invoice).Error
+	// Create parent first, then each line item explicitly so product_id, name, and
+	// product_name are always persisted (nested Create can omit association fields).
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		items := invoice.Items
+		invoice.Items = nil
+
+		if err := tx.Create(invoice).Error; err != nil {
+			return err
+		}
+
+		for i := range items {
+			items[i].Model = gorm.Model{}
+			items[i].InvoiceID = invoice.ID
+			if err := tx.Create(&items[i]).Error; err != nil {
+				return err
+			}
+		}
+		invoice.Items = items
+		return nil
+	})
 }
 
 func (r *InvoiceRepo) SearchByClient(customerName string) ([]models.Invoice, error) {
@@ -37,7 +60,6 @@ func (r *InvoiceRepo) SearchByPaymentStatus(status string) ([]models.Invoice, er
 }
 
 func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error) {
-	// CHECKs if already paid FIRST
 	var existing models.Invoice
 	err := db.DB.First(&existing, id).Error
 	if err != nil {
@@ -59,9 +81,9 @@ func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.I
 		return nil, result.Error
 	}
 
-	var invoice models.Invoice
-	db.DB.First(&invoice, id)
-	return &invoice, nil
+	var inv models.Invoice
+	db.DB.First(&inv, id)
+	return &inv, nil
 }
 
 func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
@@ -71,7 +93,6 @@ func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
 	}
 
 	invoice.Customer_payment_status = "draft"
-	// Clear payment date when moving back to draft.
 	invoice.PaymentDate = time.Time{}
 
 	if err := db.DB.Save(&invoice).Error; err != nil {
@@ -88,7 +109,6 @@ func (r *InvoiceRepo) SetInvoiceSent(id uint, paymentStatus string) (*models.Inv
 
 	invoice.Customer_payment_status = paymentStatus
 
-	// Sending isn't the same as payment; do not modify payment_date here.
 	if err := db.DB.Save(&invoice).Error; err != nil {
 		return nil, err
 	}
@@ -106,9 +126,10 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 		return err
 	}
 
-	for _, item := range invoice.Items {
-		item.InvoiceID = invoice.ID
-		if err := db.DB.Create(&item).Error; err != nil {
+	for i := range invoice.Items {
+		invoice.Items[i].Model = gorm.Model{}
+		invoice.Items[i].InvoiceID = invoice.ID
+		if err := db.DB.Create(&invoice.Items[i]).Error; err != nil {
 			return err
 		}
 	}
@@ -116,7 +137,6 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 	return nil
 }
 
-// Robel
 func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
 	var invoice models.Invoice
 
@@ -125,5 +145,8 @@ func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
 		return nil, err
 	}
 	return &invoice, nil
+}
 
+func (r *InvoiceRepo) SyncInvoiceCustomerSnapshot(id uint, customerName string) error {
+	return db.DB.Model(&models.Invoice{}).Where("id = ?", id).Update("customer_name", customerName).Error
 }

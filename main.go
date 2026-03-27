@@ -30,6 +30,7 @@ func main() {
 	invoiceService := &services.InvoiceService{
 		Repo:            invoiceRepo,
 		ClientRepo:      clientRepo,
+		ProductRepo:     productRepo,
 		BusinessService: businessService,
 	}
 	clientService := &services.ClientService{Repo: clientRepo}
