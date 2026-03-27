@@ -371,15 +371,20 @@ func GenerateInvoicePDF(invoice *models.Invoice, biz *models.Business, client *m
 	pdf.AddPage()
 
 	// Set margins
-	pdf.SetMargins(15, 20, 15)
+	leftMargin, topMargin, rightMargin := 15.0, 15.0, 15.0
+	pdf.SetMargins(leftMargin, topMargin, rightMargin)
+
+	pageW, pageH := pdf.GetPageSize()
+	contentW := pageW - leftMargin - rightMargin
 
 	// Optional logo (top-left). Supports either:
 	// - public URL in biz.LogoURL (https://...)
 	// - repo/local path in biz.LogoURL (e.g. assets/logo.png)
 	logoPath := strings.TrimSpace(biz.LogoURL)
-	logoW := 40.0
+	logoW := 34.0
 	logoH := 0.0 // auto scale
-	logoYBottom := 20.0
+	headerTop := topMargin
+	headerMinBottom := headerTop + 34.0
 	var cleanupLogo func()
 	if logoPath != "" {
 		var localLogo string
@@ -408,40 +413,56 @@ func GenerateInvoicePDF(invoice *models.Invoice, biz *models.Business, client *m
 		}
 
 		if localLogo != "" {
-			x := 15.0
-			y := 20.0
+			x := leftMargin
+			y := headerTop
 			// gofpdf can infer type from extension (PNG/JPG/JPEG).
 			pdf.ImageOptions(localLogo, x, y, logoW, logoH, false, gofpdf.ImageOptions{ReadDpi: true}, 0, "")
-			logoYBottom = y + 25.0
 		}
 	}
 	if cleanupLogo != nil {
 		defer cleanupLogo()
 	}
 
-	// Business details (top-right, dynamic below logo)
-	yPos := logoYBottom - 10.0
-	pdf.SetXY(110, yPos)
-	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(90, 6, biz.BusinessName) // Fixed: w=90 (right width), h=6, txt only
+	// Business details (top-right) in a fixed header area to avoid overlap.
+	bizX := leftMargin + logoW + 10.0
+	bizW := contentW - (logoW + 10.0)
+	pdf.SetXY(bizX, headerTop)
+	pdf.SetFont("Arial", "B", 14)
+	pdf.MultiCell(bizW, 6, strings.TrimSpace(biz.BusinessName), "", "R", false)
 
-	pdf.SetFont("Arial", "", 11)
-	pdf.SetXY(110, pdf.GetY())
-	pdf.MultiCell(90, 5, biz.Address, "", "", false) // w=90 for consistency
-
-	pdf.SetXY(110, pdf.GetY())
-	pdf.Cell(90, 5, fmt.Sprintf("Phone: %s", biz.Phone)) // Fixed: 3 args only
-	pdf.Ln(4)
-	pdf.Cell(90, 5, fmt.Sprintf("Email: %s", biz.Email)) // Fixed: 3 args only
-	if biz.VATID != "" {
-		pdf.Ln(4)
-		pdf.Cell(90, 5, fmt.Sprintf("VAT ID: %s", biz.VATID)) // Fixed: 3 args only
+	pdf.SetFont("Arial", "", 10)
+	if strings.TrimSpace(biz.Address) != "" {
+		pdf.SetX(bizX)
+		pdf.MultiCell(bizW, 4.5, strings.TrimSpace(biz.Address), "", "R", false)
+	}
+	if strings.TrimSpace(biz.Phone) != "" {
+		pdf.SetX(bizX)
+		pdf.MultiCell(bizW, 4.5, fmt.Sprintf("Phone: %s", strings.TrimSpace(biz.Phone)), "", "R", false)
+	}
+	if strings.TrimSpace(biz.Email) != "" {
+		pdf.SetX(bizX)
+		pdf.MultiCell(bizW, 4.5, fmt.Sprintf("Email: %s", strings.TrimSpace(biz.Email)), "", "R", false)
+	}
+	if strings.TrimSpace(biz.VATID) != "" {
+		pdf.SetX(bizX)
+		pdf.MultiCell(bizW, 4.5, fmt.Sprintf("VAT ID: %s", strings.TrimSpace(biz.VATID)), "", "R", false)
 	}
 
-	pdf.SetFont("Arial", "B", 16)
-	pdf.SetXY(0, 65)
-	pdf.Cell(190, 10, "Invoice")
-	pdf.Ln(12)
+	headerBottom := pdf.GetY()
+	if headerBottom < headerMinBottom {
+		headerBottom = headerMinBottom
+	}
+
+	// Divider line under header.
+	pdf.SetDrawColor(220, 220, 220)
+	pdf.Line(leftMargin, headerBottom+3, pageW-rightMargin, headerBottom+3)
+	pdf.SetY(headerBottom + 8)
+
+	// Invoice title
+	pdf.SetFont("Arial", "B", 22)
+	pdf.SetTextColor(35, 35, 35)
+	pdf.CellFormat(contentW, 10, "Invoice", "0", 1, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
 
 	pdf.SetFont("Arial", "", 12)
 	pdf.Cell(95, 7, fmt.Sprintf("Invoice No: %s", invoice.InvoiceNumber))
@@ -476,6 +497,7 @@ func GenerateInvoicePDF(invoice *models.Invoice, biz *models.Business, client *m
 	colUnit := 30.0
 	colLine := 35.0
 	rowH := 7.0
+	_ = pageH // keep for future pagination improvements
 
 	pdf.SetFont("Arial", "B", 11)
 	pdf.SetFillColor(240, 240, 240)
