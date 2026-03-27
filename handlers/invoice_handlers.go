@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -170,6 +171,33 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 		"message": "invoice updated successfully",
 		"invoice": req,
 	})
+}
+
+// GetInvoicePDF streams the invoice as application/pdf (inline) so browsers can render it.
+func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idParam := vars["id"]
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid invoice id"})
+		return
+	}
+
+	data, filename, err := h.Service.RenderInvoicePDF(uint(id))
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // Robel

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"invoiceSys/db"
 	"invoiceSys/handlers"
@@ -47,9 +48,13 @@ func main() {
 	//routes
 	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler, productHandler)
 
-	//start server
-	fmt.Println("server started on :8080")
-	err := http.ListenAndServe(":8080", r)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+	fmt.Println("server listening on", addr)
+	err := http.ListenAndServe(addr, r)
 	if err != nil {
 		log.Fatal("failed to start server", err)
 	}

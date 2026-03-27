@@ -1,0 +1,10 @@
+# Render.com: New Web Service → connect this repo, root directory = this folder (where go.mod lives).
+# Set env in the dashboard: JWT_SECRET, DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT, SMTP_* as needed.
+# Ensure assets/QNF.jpg is in the deploy root (committed in repo). PORT is injected by Render.
+services:
+  - type: web
+    name: query-ninjas-api
+    runtime: go
+    plan: free
+    buildCommand: go build -o server .
+    startCommand: ./server

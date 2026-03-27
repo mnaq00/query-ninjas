@@ -33,15 +33,26 @@ type InvoiceService struct {
 	BusinessService *BusinessService
 }
 
-// enrichInvoiceItemsFromProducts fills name, product_name, and price from the catalog when product_id is set.
+// enrichInvoiceItemsFromProducts fills product_name (always from catalog when product_id is set), name,
+// and price. PDF and stored rows then always carry the product name for catalog lines.
 func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceItem) error {
-	if items == nil || s.ProductRepo == nil {
+	if items == nil {
 		return nil
 	}
 	for i := range *items {
 		item := &(*items)[i]
 		if item.ProductID == 0 {
+			// Manual line: keep name and product_name in sync so PDF/description columns are never half-empty.
+			if strings.TrimSpace(item.ProductName) == "" {
+				item.ProductName = strings.TrimSpace(item.Name)
+			}
+			if strings.TrimSpace(item.Name) == "" {
+				item.Name = strings.TrimSpace(item.ProductName)
+			}
 			continue
+		}
+		if s.ProductRepo == nil {
+			return fmt.Errorf("product catalog not configured (product_id %d)", item.ProductID)
 		}
 		p, err := s.ProductRepo.GetByID(item.ProductID)
 		if err != nil {
@@ -54,13 +65,10 @@ func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceI
 		if name == "" {
 			name = fmt.Sprintf("Product #%d", item.ProductID)
 		}
-		if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.ProductName) == "" {
+		// Always stamp the catalog product name for this line (invoice create, update, PDF, email).
+		item.ProductName = name
+		if strings.TrimSpace(item.Name) == "" {
 			item.Name = name
-			item.ProductName = name
-		} else if strings.TrimSpace(item.ProductName) == "" {
-			item.ProductName = strings.TrimSpace(item.Name)
-		} else if strings.TrimSpace(item.Name) == "" {
-			item.Name = strings.TrimSpace(item.ProductName)
 		}
 		if item.Price <= 0 {
 			item.Price = p.Price
@@ -95,6 +103,9 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 		}
 		if item.Quantity <= 0 {
 			return errors.New("item quantity must be greater than 0")
+		}
+		if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.ProductName) == "" {
+			return errors.New("each line item must have a name or product_id that resolves to a product name")
 		}
 		subtotal += item.Price * float64(item.Quantity)
 	}
@@ -167,6 +178,9 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 		if item.Price <= 0 {
 			return errors.New("item price must be greater than 0")
 		}
+		if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.ProductName) == "" {
+			return errors.New("each line item must have a name or product_id that resolves to a product name")
+		}
 
 		item.LineTotal = item.Price * float64(item.Quantity)
 		subtotal += item.LineTotal
@@ -208,6 +222,45 @@ func (s *InvoiceService) SaveInvoiceDraft(id uint) (*models.Invoice, error) {
 	return s.Repo.SetInvoiceDraft(id)
 }
 
+// RenderInvoicePDF builds the invoice PDF in memory for HTTP responses (browser / Postman / deployed API).
+// Draft invoices are allowed so users can preview before sending.
+func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string, err error) {
+	invoice, err := s.Repo.GetInvoiceByID(id)
+	if err != nil {
+		return nil, "", err
+	}
+	if s.ClientRepo == nil {
+		return nil, "", errors.New("client repository not configured")
+	}
+	client, err := s.ClientRepo.GetClientByID(invoice.ClientID)
+	if err != nil {
+		return nil, "", errors.New("client not found")
+	}
+
+	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items); err != nil {
+		return nil, "", err
+	}
+
+	var biz models.Business
+	if s.BusinessService != nil {
+		if profile, err := s.BusinessService.GetBusinessProfile(1); err == nil && profile != nil {
+			biz = *profile
+		}
+	}
+
+	pdfPath, err := GenerateInvoicePDF(invoice, &biz, client)
+	if err != nil {
+		return nil, "", err
+	}
+	defer os.Remove(pdfPath)
+
+	data, err := os.ReadFile(pdfPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return data, filepath.Base(pdfPath), nil
+}
+
 // Robel
 func (s *InvoiceService) SendInvoiceEmail(id uint) error {
 	invoice, err := s.Repo.GetInvoiceByID(id)
@@ -236,8 +289,10 @@ func (s *InvoiceService) SendInvoiceEmail(id uint) error {
 	}
 	invoice.CustomerName = client.Name
 
-	// Fill missing line labels from catalog (fixes PDF if DB rows lack name/product_name).
-	_ = s.enrichInvoiceItemsFromProducts(&invoice.Items)
+	// Ensure catalog-backed lines have product_name (and prices) before PDF generation.
+	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items); err != nil {
+		return err
+	}
 
 	var biz models.Business
 	if s.BusinessService != nil {
