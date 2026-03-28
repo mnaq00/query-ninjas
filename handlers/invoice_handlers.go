@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"invoiceSys/models"
@@ -171,6 +173,33 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetInvoicePDF streams the invoice as application/pdf (inline) so browsers can render it.
+func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idParam := vars["id"]
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid invoice id"})
+		return
+	}
+
+	data, filename, err := h.Service.RenderInvoicePDF(uint(id))
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
 // Robel
 func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -178,26 +207,27 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(idParam)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "invalid invoice id",
-		})
+		http.Error(w, "invalid invoice id", http.StatusBadRequest)
 		return
 	}
-	// Robel
+
 	err = h.Service.SendInvoiceEmail(uint(id))
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": err.Error(),
-		})
+		status := http.StatusInternalServerError
+		msg := err.Error()
+
+		if msg == "draft invoices cannot be sent" ||
+			msg == "client has no email address; cannot send invoice" ||
+			strings.HasPrefix(msg, "SMTP not configured") ||
+			strings.HasPrefix(msg, "SMTP_FROM not configured") {
+			status = http.StatusBadRequest
+		}
+
+		http.Error(w, msg, status)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "invoice sent successfully",
 	})

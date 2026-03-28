@@ -5,6 +5,7 @@ import (
 	"invoiceSys/models"
 	"invoiceSys/services"
 	"net/http"
+	"time"
 )
 
 type UserHandler struct {
@@ -20,16 +21,26 @@ func (h *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// call service layer
 	err = h.Service.RegisterUser(&signUp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	//response
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(signUp)
+	// Account created — no JWT here; client obtains a token via POST /login.
+	json.NewEncoder(w).Encode(struct {
+		ID        uint      `json:"id"`
+		Username  string    `json:"username"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}{
+		ID:        signUp.ID,
+		Username:  signUp.Username,
+		CreatedAt: signUp.CreatedAt,
+		UpdatedAt: signUp.UpdatedAt,
+	})
 }
 
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {

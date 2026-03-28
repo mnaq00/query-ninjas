@@ -28,7 +28,7 @@ func (s *UserService) RegisterUser(req *models.User) error {
 
 	req.Password = hashedPass
 
-	// Save user to DB
+	// Save user to DB (populates req.ID)
 	err = s.Repo.CreateUser(req)
 	if err != nil {
 		return err

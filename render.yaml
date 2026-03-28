@@ -1,0 +1,10 @@
+# Render: New Web Service → connect GitHub repo, root = this folder (where go.mod is).
+# Dashboard env: JWT_SECRET, DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT, SMTP_* if you send mail.
+# PORT is set automatically by Render.
+services:
+  - type: web
+    name: query-ninjas-api
+    runtime: go
+    plan: free
+    buildCommand: go build -o server .
+    startCommand: ./server

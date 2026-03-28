@@ -25,9 +25,5 @@ func (r *UserRepo) GetUserByUsername(username string) (*models.User, error) {
 }
 
 func (r *UserRepo) CreateUser(user *models.User) error {
-	err := db.DB.Create(&user).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return db.DB.Create(user).Error
 }

@@ -34,6 +34,7 @@ func SetupRouter(
 	protected.HandleFunc("/invoices", invoiceHandler.CreateInvoice).Methods("POST")
 	protected.HandleFunc("/invoices/ViewInvoiceStatus", invoiceHandler.ViewInvoiceStatus).Methods("GET")
 	protected.HandleFunc("/invoices/{id}/paid", invoiceHandler.MarkInvoicePaid).Methods("PUT")
+	protected.HandleFunc("/invoices/{id}/pdf", invoiceHandler.GetInvoicePDF).Methods("GET")
 	protected.HandleFunc("/invoices/{id}", invoiceHandler.UpdateInvoice).Methods("PUT")
 	protected.HandleFunc("/products/{id}", productHandler.UpdateProduct).Methods("PUT")
 	protected.HandleFunc("/products", productHandler.CreateProduct).Methods("POST")

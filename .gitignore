@@ -5,3 +5,6 @@
 bin/
 *.exe
 *.out
+
+# Local PDF preview from cmd/previewpdf
+invoice_*.pdf
