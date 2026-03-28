@@ -458,6 +458,9 @@ func (s *InvoiceService) SendInvoiceEmail(id uint) error {
 	// Mark as sent so it can be viewed later.
 	_, err = s.Repo.SetInvoiceSent(id, "sent/downloaded")
 	return err
+	fmt.Println("PDF Generated at: ", pdfPath)
+
+	return nil
 }
 
 // func GenerateInvoicePDF(invoice *models.Invoice) (string, error) {

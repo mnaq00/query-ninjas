@@ -45,6 +45,7 @@ func (r *InvoiceRepo) CreateInvoice(invoice *models.Invoice) error {
 		invoice.Items = items
 		return nil
 	})
+	return db.DB.Create(invoice).Error
 }
 
 func (r *InvoiceRepo) SearchByClient(customerName string) ([]models.Invoice, error) {
@@ -60,6 +61,7 @@ func (r *InvoiceRepo) SearchByPaymentStatus(status string) ([]models.Invoice, er
 }
 
 func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error) {
+	// CHECKs if already paid FIRST
 	var existing models.Invoice
 	err := db.DB.First(&existing, id).Error
 	if err != nil {
@@ -81,10 +83,16 @@ func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.I
 		return nil, result.Error
 	}
 
-	var inv models.Invoice
-	db.DB.First(&inv, id)
-	return &inv, nil
+	var invoice models.Invoice
+	db.DB.First(&invoice, id)
+	return &invoice, nil
 }
+func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
+	invoice.ID = id
+
+	if err := db.DB.Save(invoice).Error; err != nil {
+		return err
+	}
 
 func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
 	var invoice models.Invoice
@@ -126,10 +134,9 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 		return err
 	}
 
-	for i := range invoice.Items {
-		invoice.Items[i].Model = gorm.Model{}
-		invoice.Items[i].InvoiceID = invoice.ID
-		if err := db.DB.Create(&invoice.Items[i]).Error; err != nil {
+	for _, item := range invoice.Items {
+		item.InvoiceID = invoice.ID
+		if err := db.DB.Create(&item).Error; err != nil {
 			return err
 		}
 	}
@@ -141,6 +148,11 @@ func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
 	var invoice models.Invoice
 
 	err := db.DB.Preload("Items").First(&invoice, id).Error
+// Robel
+func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
+	var invoice models.Invoice
+
+	err := db.DB.First(&invoice, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -149,4 +161,5 @@ func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
 
 func (r *InvoiceRepo) SyncInvoiceCustomerSnapshot(id uint, customerName string) error {
 	return db.DB.Model(&models.Invoice{}).Where("id = ?", id).Update("customer_name", customerName).Error
+
 }

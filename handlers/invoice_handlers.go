@@ -131,6 +131,69 @@ func (h *InvoiceHandler) MarkInvoicePaid(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+
+	if err := json.NewEncoder(w).Encode(matches); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// 6.2 search all invoices based off desired payment status - Paid, overdue, sent/Downloaded, Draft
+func (h *InvoiceHandler) ViewInvoiceStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	paymentStatus := r.URL.Query().Get("customer_payment_status") // ← Changed param name
+	if paymentStatus == "" {
+		http.Error(w, " Customer payment status is required (draft, paid, overdue, sent/downloaded.)", http.StatusBadRequest)
+		return
+	}
+
+	matches, err := h.Service.SearchByPaymentStatus(paymentStatus)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if len(matches) == 0 {
+		http.Error(w, "No invoices with status: "+paymentStatus, http.StatusNotFound)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(matches); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// 6.1
+func (h *InvoiceHandler) MarkInvoicePaid(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// Auto-generate NOW as payment date
+	now := time.Now()
+
+	invoice, err := h.Service.MarkInvoicePaid(uint(id), now)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":      "Invoice marked PAID",
+		"invoice_id":   id,
+		"payment_date": now.Format(time.RFC3339),
+		"invoice":      invoice,
+	})
+}
+
 func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 	var req models.Invoice
 
@@ -226,6 +289,11 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		w.WriteHeader(status)
+	// Robel
+	err = h.Service.SendInvoiceEmail(uint(id))
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": err.Error(),
 		})
