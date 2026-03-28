@@ -36,3 +36,12 @@ func (r *BusinessRepo) UpdateBusinessProfile(profile *models.Business) error {
 	}
 	return nil
 }
+
+// I added this
+func (r *BusinessRepo) AddInvoices(profile *models.Business) error {
+	err := db.DB.Create(&profile).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
