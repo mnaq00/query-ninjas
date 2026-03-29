@@ -75,13 +75,13 @@ func (h *InvoiceHandler) SearchByClient(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// 6.2 search all invoices based off desired payment status - Paid, overdue, sent/Downloaded, Draft
+// 6.2 search invoices by customer payment status: unpaid, paid, overdue
 func (h *InvoiceHandler) ViewInvoiceStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	paymentStatus := r.URL.Query().Get("customer_payment_status") // ← Changed param name
+	paymentStatus := r.URL.Query().Get("customer_payment_status")
 	if paymentStatus == "" {
-		http.Error(w, " Customer payment status is required (draft, paid, overdue, sent/downloaded.)", http.StatusBadRequest)
+		http.Error(w, "customer_payment_status query is required (unpaid, paid, overdue)", http.StatusBadRequest)
 		return
 	}
 
@@ -173,7 +173,8 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetInvoicePDF streams the invoice as application/pdf (inline) so browsers can render it.
+// GetInvoicePDF streams the invoice as application/pdf with attachment disposition so
+// clients (Postman “Send and Download”, browsers) save the file instead of only previewing.
 func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idParam := vars["id"]
@@ -194,13 +195,14 @@ func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 }
 
-// Robel
+// Robel — Body must include "invoice_status": "ready_to_send" (or "ready to send").
+// Draft invoices are promoted to ready_to_send automatically, then email is sent.
 func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idParam := vars["id"]
@@ -211,12 +213,21 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.Service.SendInvoiceEmail(uint(id))
+	var body struct {
+		InvoiceStatus string `json:"invoice_status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "JSON body required with invoice_status", http.StatusBadRequest)
+		return
+	}
+
+	err = h.Service.SendInvoiceEmail(uint(id), body.InvoiceStatus)
 	if err != nil {
 		status := http.StatusInternalServerError
 		msg := err.Error()
 
-		if msg == "draft invoices cannot be sent" ||
+		if strings.HasPrefix(msg, "request body must include") ||
+			strings.HasPrefix(msg, "email send is only allowed") ||
 			msg == "client has no email address; cannot send invoice" ||
 			strings.HasPrefix(msg, "SMTP not configured") ||
 			strings.HasPrefix(msg, "SMTP_FROM not configured") {

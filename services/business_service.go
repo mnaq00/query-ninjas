@@ -5,6 +5,7 @@ import (
 	"invoiceSys/models"
 	"invoiceSys/repository"
 	"regexp"
+	"strings"
 )
 
 type BusinessService struct {
@@ -40,6 +41,11 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 
 	if req.Phone == "" {
 		return errors.New("phone number is required")
+	}
+
+	// No logo in request → NULL in DB; empty string → treat as unset.
+	if req.LogoURL != nil && strings.TrimSpace(*req.LogoURL) == "" {
+		req.LogoURL = nil
 	}
 
 	//Save business profile to database
@@ -82,6 +88,10 @@ func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, req.Email)
 	if !matched {
 		return errors.New("Invalid email format")
+	}
+
+	if req.LogoURL != nil && strings.TrimSpace(*req.LogoURL) == "" {
+		req.LogoURL = nil
 	}
 
 	//Save business profile to database

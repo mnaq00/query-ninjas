@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"invoiceSys/models"
@@ -10,13 +12,14 @@ import (
 )
 
 func main() {
+	logoPath := "assets/QNF.jpg"
 	biz := &models.Business{
 		BusinessName: "Query Ninja Furniture Limited",
 		Address:      "123 High Street, London",
 		Phone:        "01234 567890",
 		Email:        "accounts@queryninja.example",
 		VATID:        "GB123456789",
-		LogoURL:      "assets/QNF.jpg",
+		LogoURL:      &logoPath,
 	}
 
 	client := &models.Client{
@@ -33,8 +36,9 @@ func main() {
 		TaxAmount:     50,
 		Total:         300,
 		Items: []models.InvoiceItem{
+			{ProductName: "Strawberry Cake", Description: "Made of strawberries — hand finished.", Quantity: 1, Price: 45, LineTotal: 45},
 			{ProductName: "Rattan Chair", Quantity: 2, Price: 75, LineTotal: 150},
-			{ProductName: "Side Table", Quantity: 1, Price: 100, LineTotal: 100},
+			{ProductName: "Side Table", Description: "Compact oak.", Quantity: 1, Price: 100, LineTotal: 100},
 		},
 	}
 
@@ -42,7 +46,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Println(path)
+	dest := filepath.Join("cmd", "previewpdf", "preview_invoice_layout.pdf")
+	if err := os.Rename(path, dest); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(dest)
 }
 
