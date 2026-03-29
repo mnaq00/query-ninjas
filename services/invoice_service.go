@@ -26,6 +26,16 @@ const invoicePDFLogoPath = "assets/QNF.jpg"
 // invoicePDFLogoWidthMM is the logo width on the page; height scales to preserve aspect ratio.
 const invoicePDFLogoWidthMM = 34.0
 
+// calendarDatePastDue is true when today's calendar date (UTC) is after the due date's calendar date (UTC).
+func calendarDatePastDue(due time.Time, now time.Time) bool {
+	if due.IsZero() {
+		return false
+	}
+	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, time.UTC)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return today.After(dueDay)
+}
+
 type InvoiceService struct {
 	Repo            repository.InvoiceRepository
 	ClientRepo      *repository.ClientRepo
@@ -78,6 +88,47 @@ func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceI
 		}
 	}
 	return nil
+}
+
+// reconcileOverdueInDB sets customer_payment_status to overdue when the due date has passed and the
+// invoice is still issued-unpaid (sent/downloaded), or reverts overdue → sent/downloaded if the due
+// date is moved to the future. Draft and paid invoices are left unchanged.
+func (s *InvoiceService) reconcileOverdueInDB(inv *models.Invoice) (updated bool, err error) {
+	st := strings.ToLower(strings.TrimSpace(inv.Customer_payment_status))
+	if st == "paid" || st == "draft" {
+		return false, nil
+	}
+	if inv.PaymentDueDate.IsZero() {
+		return false, nil
+	}
+	pastDue := calendarDatePastDue(inv.PaymentDueDate, time.Now())
+	if pastDue {
+		if st == "sent/downloaded" {
+			if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, "overdue"); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		return false, nil
+	}
+	if st == "overdue" {
+		if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, "sent/downloaded"); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (s *InvoiceService) reloadInvoiceIfReconciled(inv *models.Invoice) (*models.Invoice, error) {
+	changed, err := s.reconcileOverdueInDB(inv)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return inv, nil
+	}
+	return s.Repo.GetInvoiceByID(inv.ID)
 }
 
 // Musa
@@ -137,34 +188,50 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 
 	req.InvoiceNumber = fmt.Sprintf("INV-%d", time.Now().UnixNano())
 
-	return s.Repo.CreateInvoice(req)
+	if err := s.Repo.CreateInvoice(req); err != nil {
+		return err
+	}
+	inv, err := s.Repo.GetInvoiceByID(req.ID)
+	if err != nil {
+		return err
+	}
+	fresh, err := s.reloadInvoiceIfReconciled(inv)
+	if err != nil {
+		return err
+	}
+	*req = *fresh
+	return nil
 }
 
-func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
+func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*models.Invoice, error) {
 	if invoice.ClientID == 0 {
-		return errors.New("client id is required")
+		return nil, errors.New("client id is required")
 	}
 
 	if len(invoice.Items) == 0 {
-		return errors.New("at least one invoice item is required")
+		return nil, errors.New("at least one invoice item is required")
 	}
 
 	if invoice.TaxRate < 0 {
-		return errors.New("vat rate cannot be negative")
+		return nil, errors.New("vat rate cannot be negative")
+	}
+
+	existing, err := s.Repo.GetInvoiceByID(id)
+	if err != nil {
+		return nil, err
 	}
 
 	// Preserve invoice status when client omits it; otherwise it may get overwritten
 	// with an empty string during JSON decode.
 	if strings.TrimSpace(invoice.Customer_payment_status) == "" {
-		existing, err := s.Repo.GetInvoiceByID(id)
-		if err != nil {
-			return err
-		}
 		invoice.Customer_payment_status = existing.Customer_payment_status
+	}
+	if invoice.PaymentDueDate.IsZero() {
+		invoice.PaymentDueDate = existing.PaymentDueDate
 	}
 
 	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items); err != nil {
-		return err
+		return nil, err
 	}
 
 	var subtotal float64
@@ -173,13 +240,13 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 		item := &invoice.Items[i]
 
 		if item.Quantity <= 0 {
-			return errors.New("quantity must be greater than zero")
+			return nil, errors.New("quantity must be greater than zero")
 		}
 		if item.Price <= 0 {
-			return errors.New("item price must be greater than 0")
+			return nil, errors.New("item price must be greater than 0")
 		}
 		if strings.TrimSpace(item.Name) == "" && strings.TrimSpace(item.ProductName) == "" {
-			return errors.New("each line item must have a name or product_id that resolves to a product name")
+			return nil, errors.New("each line item must have a name or product_id that resolves to a product name")
 		}
 
 		item.LineTotal = item.Price * float64(item.Quantity)
@@ -189,11 +256,11 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 	// Keep CustomerName in sync with the selected client.
 	// This is important because `SearchByClient` queries by `customer_name`.
 	if s.ClientRepo == nil {
-		return errors.New("client repository not configured")
+		return nil, errors.New("client repository not configured")
 	}
 	client, err := s.ClientRepo.GetClientByID(invoice.ClientID)
 	if err != nil {
-		return errors.New("client not found")
+		return nil, errors.New("client not found")
 	}
 	invoice.CustomerName = client.Name
 	invoice.InvoiceDate = time.Now()
@@ -203,14 +270,27 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) error {
 	invoice.TaxAmount = subtotal * (invoice.TaxRate / 100)
 	invoice.Total = invoice.Subtotal + invoice.TaxAmount
 
-	return s.Repo.UpdateInvoice(id, invoice)
+	if err := s.Repo.UpdateInvoice(id, invoice); err != nil {
+		return nil, err
+	}
+	inv, err := s.Repo.GetInvoiceByID(id)
+	if err != nil {
+		return nil, err
+	}
+	return s.reloadInvoiceIfReconciled(inv)
 }
 
 func (s *InvoiceService) SearchByClient(customerName string) ([]models.Invoice, error) {
+	if err := s.Repo.SyncOverdueBatch(time.Now()); err != nil {
+		return nil, err
+	}
 	return s.Repo.SearchByClient(customerName)
 }
 
 func (s *InvoiceService) SearchByPaymentStatus(status string) ([]models.Invoice, error) {
+	if err := s.Repo.SyncOverdueBatch(time.Now()); err != nil {
+		return nil, err
+	}
 	return s.Repo.SearchByPaymentStatus(status)
 }
 
@@ -226,6 +306,10 @@ func (s *InvoiceService) SaveInvoiceDraft(id uint) (*models.Invoice, error) {
 // Draft invoices are allowed so users can preview before sending.
 func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string, err error) {
 	invoice, err := s.Repo.GetInvoiceByID(id)
+	if err != nil {
+		return nil, "", err
+	}
+	invoice, err = s.reloadInvoiceIfReconciled(invoice)
 	if err != nil {
 		return nil, "", err
 	}
@@ -264,6 +348,10 @@ func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string,
 // Robel
 func (s *InvoiceService) SendInvoiceEmail(id uint) error {
 	invoice, err := s.Repo.GetInvoiceByID(id)
+	if err != nil {
+		return err
+	}
+	invoice, err = s.reloadInvoiceIfReconciled(invoice)
 	if err != nil {
 		return err
 	}
@@ -561,7 +649,12 @@ func GenerateInvoicePDF(invoice *models.Invoice, biz *models.Business, client *m
 	pdf.Cell(95, 7, fmt.Sprintf("Invoice No: %s", invoice.InvoiceNumber))
 	pdf.Ln(7)
 	pdf.Cell(95, 7, fmt.Sprintf("Invoice Date: %s", invoice.InvoiceDate.Format("2006-01-02")))
-	pdf.Ln(10)
+	pdf.Ln(7)
+	if !invoice.PaymentDueDate.IsZero() {
+		pdf.Cell(95, 7, fmt.Sprintf("Payment Due: %s", invoice.PaymentDueDate.Format("2006-01-02")))
+		pdf.Ln(7)
+	}
+	pdf.Ln(3)
 
 	// Bill-to block (client details)
 	pdf.SetFont("Arial", "B", 12)

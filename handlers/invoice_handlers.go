@@ -155,7 +155,7 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	err = h.Service.UpdateInvoice(uint(id), &req)
+	updated, err := h.Service.UpdateInvoice(uint(id), &req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -169,7 +169,7 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "invoice updated successfully",
-		"invoice": req,
+		"invoice": updated,
 	})
 }
 

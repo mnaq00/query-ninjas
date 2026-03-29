@@ -21,6 +21,10 @@ type InvoiceRepository interface {
 	UpdateInvoice(id uint, invoice *models.Invoice) error
 	GetInvoiceByID(id uint) (*models.Invoice, error)
 	SyncInvoiceCustomerSnapshot(id uint, customerName string) error
+	UpdateInvoicePaymentStatus(id uint, status string) error
+	// SyncOverdueBatch promotes sent/downloaded → overdue when the due date (UTC calendar) has passed,
+	// and demotes overdue → sent/downloaded when the due date is today or in the future.
+	SyncOverdueBatch(now time.Time) error
 }
 
 type InvoiceRepo struct{}
@@ -166,4 +170,33 @@ func (r *InvoiceRepo) SyncInvoiceCustomerSnapshot(id uint, customerName string) 
 	return db.DB.Model(&models.Invoice{}).
 		Where("id = ?", id).
 		Update("customer_name", customerName).Error
+}
+
+func (r *InvoiceRepo) UpdateInvoicePaymentStatus(id uint, status string) error {
+	return db.DB.Model(&models.Invoice{}).
+		Where("id = ?", id).
+		Update("customer_payment_status", status).Error
+}
+
+func (r *InvoiceRepo) SyncOverdueBatch(now time.Time) error {
+	y, m, d := now.UTC().Date()
+	todayUTC := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	dayStr := todayUTC.Format("2006-01-02")
+
+	if err := db.DB.Exec(`
+		UPDATE invoices
+		SET customer_payment_status = 'overdue'
+		WHERE LOWER(customer_payment_status) = 'sent/downloaded'
+		  AND payment_due_date IS NOT NULL
+		  AND DATE(payment_due_date AT TIME ZONE 'UTC') < ?::date
+	`, dayStr).Error; err != nil {
+		return err
+	}
+	return db.DB.Exec(`
+		UPDATE invoices
+		SET customer_payment_status = 'sent/downloaded'
+		WHERE LOWER(customer_payment_status) = 'overdue'
+		  AND payment_due_date IS NOT NULL
+		  AND DATE(payment_due_date AT TIME ZONE 'UTC') >= ?::date
+	`, dayStr).Error
 }

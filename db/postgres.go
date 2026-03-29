@@ -23,24 +23,31 @@ func InitDb() {
 		log.Fatal("Error loading .env file")
 	}
 
-	connStr := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
-		os.Getenv("DB_PORT"),
-	)
-
+connStr := fmt.Sprintf(
+    "postgresql://%s:%s@%s:%s/%s?sslmode=disable",
+    os.Getenv("DB_USER"),
+    os.Getenv("DB_PASSWORD"),
+    os.Getenv("DB_HOST"),
+    os.Getenv("DB_PORT"),
+    os.Getenv("DB_NAME"),
+)
 	DB, err = gorm.Open(postgres.Open(connStr), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
 
+	// Check which database we're actually connected to
+	var dbName string
+	DB.Raw("SELECT current_database()").Scan(&dbName)
+	fmt.Println("Actually connected to database:", dbName)
+
 	//migrate the schema
-	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{},)
+	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{})
 	if err != nil {
+		fmt.Println("Migration error:", err)
 		log.Fatal("Failed to migrate schema", err)
+	} else {
+		fmt.Println("Tables migrated successfully!")
 	}
 
 	fmt.Println("Connected to database successfully!")
