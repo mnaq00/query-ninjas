@@ -2,9 +2,13 @@ package services
 
 import (
 	"errors"
+
+	"invoiceSys/apperrors"
 	"invoiceSys/models"
 	"invoiceSys/repository"
-	"regexp"
+	"invoiceSys/validate"
+
+	"gorm.io/gorm"
 )
 
 type BusinessService struct {
@@ -12,45 +16,68 @@ type BusinessService struct {
 }
 
 func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
-
-	// Check if business already exists
-	_, err := s.Repo.GetBusinessProfile(req.ID)
-	if err == nil {
-		return errors.New("Business already exists")
+	if req.ID != 0 {
+		_, err := s.Repo.GetBusinessProfile(req.ID)
+		if err == nil {
+			return apperrors.ErrBusinessExists
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 	}
 
-	if req.VATID == "" {
-		return errors.New("VAT ID is required")
+	fields := make(map[string]string)
+
+	bn, errMap := validate.Name(req.BusinessName, validate.MaxBusinessName, "business_name")
+	if errMap != nil {
+		mergeValidation(fields, errMap)
 	}
 
-	//Check if business name or email is empty
-	if req.BusinessName == "" {
-		return errors.New("Business name is required")
+	em, msg := validate.NormalizeEmail(req.Email)
+	if msg != "" {
+		fields["email"] = msg
 	}
 
-	if req.Email == "" {
-		return errors.New("Business email is required")
+	addr, errMap := validate.BusinessAddress(req.Address)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
 	}
 
-	// Check email format
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, req.Email)
-	if !matched {
-		return errors.New("Invalid email format")
+	ph, errMap := validate.Phone(req.Phone)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
 	}
 
-	if req.Phone == "" {
-		return errors.New("phone number is required")
+	vat, errMap := validate.VATID(req.VATID)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
 	}
 
-	//Save business profile to database
-	err = s.Repo.CreateBusinessProfile(req)
+	logo, errMap := validate.LogoURL(req.LogoURL)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
+	}
+
+	if len(fields) > 0 {
+		return apperrors.NewValidation(fields)
+	}
+
+	req.BusinessName = bn
+	req.Email = em
+	req.Address = addr
+	req.Phone = ph
+	req.VATID = vat
+	req.LogoURL = logo
+
+	err := s.Repo.CreateBusinessProfile(req)
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return apperrors.ErrBusinessExists
+		}
 		return err
 	}
 	return nil
 }
-
-//function to get business profile
 
 func (s *BusinessService) GetBusinessProfile(id uint) (*models.Business, error) {
 	profile, err := s.Repo.GetBusinessProfile(id)
@@ -60,33 +87,67 @@ func (s *BusinessService) GetBusinessProfile(id uint) (*models.Business, error) 
 	return profile, nil
 }
 
-//function to update business profile
-
 func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
+	if req.ID == 0 {
+		return apperrors.NewValidation(map[string]string{"id": "is required"})
+	}
 
-	// Check if business profile exists
 	_, err := s.Repo.GetBusinessProfile(req.ID)
 	if err != nil {
-		return errors.New("Business profile not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.ErrBusinessNotFound
+		}
+		return err
 	}
 
-	//Check if business name or email is empty
-	if req.BusinessName == "" {
-		return errors.New("Business name is required")
+	fields := make(map[string]string)
+
+	bn, errMap := validate.Name(req.BusinessName, validate.MaxBusinessName, "business_name")
+	if errMap != nil {
+		mergeValidation(fields, errMap)
 	}
 
-	if req.Email == "" {
-		return errors.New("Business email is required")
-	}
-	// Check email format
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, req.Email)
-	if !matched {
-		return errors.New("Invalid email format")
+	em, msg := validate.NormalizeEmail(req.Email)
+	if msg != "" {
+		fields["email"] = msg
 	}
 
-	//Save business profile to database
+	addr, errMap := validate.BusinessAddress(req.Address)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
+	}
+
+	ph, errMap := validate.Phone(req.Phone)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
+	}
+
+	vat, errMap := validate.VATID(req.VATID)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
+	}
+
+	logo, errMap := validate.LogoURL(req.LogoURL)
+	if errMap != nil {
+		mergeValidation(fields, errMap)
+	}
+
+	if len(fields) > 0 {
+		return apperrors.NewValidation(fields)
+	}
+
+	req.BusinessName = bn
+	req.Email = em
+	req.Address = addr
+	req.Phone = ph
+	req.VATID = vat
+	req.LogoURL = logo
+
 	err = s.Repo.UpdateBusinessProfile(req)
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return apperrors.ErrBusinessExists
+		}
 		return err
 	}
 	return nil

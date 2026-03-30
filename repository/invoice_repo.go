@@ -17,10 +17,13 @@ type InvoiceRepository interface {
 	SearchByPaymentStatus(status string) ([]models.Invoice, error)
 	MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error)
 	SetInvoiceDraft(id uint) (*models.Invoice, error)
-	SetInvoiceSent(id uint, paymentStatus string) (*models.Invoice, error)
+	SetInvoiceLifecycleStatus(id uint, invoiceStatus string) error
 	UpdateInvoice(id uint, invoice *models.Invoice) error
 	GetInvoiceByID(id uint) (*models.Invoice, error)
-	SyncInvoiceCustomerSnapshot(id uint, customerName string) error
+	UpdateInvoicePaymentStatus(id uint, status string) error
+	// SyncOverdueBatch: for issued invoices (invoice_status = sent/downloaded), unpaid → overdue when
+	// past due date; overdue → unpaid when due date is today or in the future.
+	SyncOverdueBatch(now time.Time) error
 }
 
 type InvoiceRepo struct{}
@@ -85,7 +88,7 @@ func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.I
 		return nil, err
 	}
 
-	return &invoice, nil
+	return r.GetInvoiceByID(invoice.ID)
 }
 
 // Set invoice to draft
@@ -96,7 +99,8 @@ func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
 		return nil, errors.New("invoice not found")
 	}
 
-	invoice.Customer_payment_status = "draft"
+	invoice.InvoiceStatus = models.InvoiceStatusDraft
+	invoice.Customer_payment_status = models.PaymentStatusUnpaid
 	invoice.PaymentDate = time.Time{}
 
 	if err := db.DB.Save(&invoice).Error; err != nil {
@@ -106,21 +110,10 @@ func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
 	return &invoice, nil
 }
 
-// Set invoice as sent
-func (r *InvoiceRepo) SetInvoiceSent(id uint, paymentStatus string) (*models.Invoice, error) {
-	var invoice models.Invoice
-
-	if err := db.DB.First(&invoice, id).Error; err != nil {
-		return nil, errors.New("invoice not found")
-	}
-
-	invoice.Customer_payment_status = strings.ToLower(paymentStatus)
-
-	if err := db.DB.Save(&invoice).Error; err != nil {
-		return nil, err
-	}
-
-	return &invoice, nil
+func (r *InvoiceRepo) SetInvoiceLifecycleStatus(id uint, invoiceStatus string) error {
+	return db.DB.Model(&models.Invoice{}).
+		Where("id = ?", id).
+		Update("invoice_status", strings.TrimSpace(invoiceStatus)).Error
 }
 
 // Update invoice and replace items
@@ -161,9 +154,33 @@ func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
 	return &invoice, nil
 }
 
-// Sync customer name snapshot
-func (r *InvoiceRepo) SyncInvoiceCustomerSnapshot(id uint, customerName string) error {
+func (r *InvoiceRepo) UpdateInvoicePaymentStatus(id uint, status string) error {
 	return db.DB.Model(&models.Invoice{}).
 		Where("id = ?", id).
-		Update("customer_name", customerName).Error
+		Update("customer_payment_status", status).Error
+}
+
+func (r *InvoiceRepo) SyncOverdueBatch(now time.Time) error {
+	y, m, d := now.UTC().Date()
+	todayUTC := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	dayStr := todayUTC.Format("2006-01-02")
+
+	if err := db.DB.Exec(`
+		UPDATE invoices
+		SET customer_payment_status = 'overdue'
+		WHERE LOWER(TRIM(invoice_status)) = 'sent/downloaded'
+		  AND LOWER(TRIM(customer_payment_status)) = 'unpaid'
+		  AND payment_due_date IS NOT NULL
+		  AND DATE(payment_due_date AT TIME ZONE 'UTC') < ?::date
+	`, dayStr).Error; err != nil {
+		return err
+	}
+	return db.DB.Exec(`
+		UPDATE invoices
+		SET customer_payment_status = 'unpaid'
+		WHERE LOWER(TRIM(invoice_status)) = 'sent/downloaded'
+		  AND LOWER(TRIM(customer_payment_status)) = 'overdue'
+		  AND payment_due_date IS NOT NULL
+		  AND DATE(payment_due_date AT TIME ZONE 'UTC') >= ?::date
+	`, dayStr).Error
 }

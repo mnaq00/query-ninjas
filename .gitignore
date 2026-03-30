@@ -8,3 +8,4 @@ bin/
 
 # Local PDF preview from cmd/previewpdf
 invoice_*.pdf
+cmd/previewpdf/preview_invoice_layout.pdf
