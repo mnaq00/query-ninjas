@@ -2,9 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"invoiceSys/models"
 	"invoiceSys/services"
-	"net/http"
 )
 
 type ClientHandler struct {
@@ -24,26 +25,23 @@ func (h *ClientHandler) AddClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CreateClientRequest
-
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := decodeJSON(w, r, &req); err != nil {
+		st, msg := jsonDecodeErrorStatus(err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(st)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
 
 	client, err := h.ClientService.AddClient(req.Name, req.Email, req.BillingAddress)
 	if err != nil {
-		if err.Error() == "Client with this email already exists!" {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Client saved successfully",
 		"client":  client,
 	})
@@ -56,21 +54,23 @@ func (h *ClientHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var client models.Client
-	err := json.NewDecoder(r.Body).Decode(&client)
-	if err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := decodeJSON(w, r, &client); err != nil {
+		st, msg := jsonDecodeErrorStatus(err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(st)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
 
 	updatedClient, err := h.ClientService.UpdateClient(&client)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Client updated successfully",
 		"client":  updatedClient,
 	})
