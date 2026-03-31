@@ -374,11 +374,14 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 	return s.reloadInvoiceIfReconciled(inv)
 }
 
-func (s *InvoiceService) SearchByClient(customerName string) ([]models.Invoice, error) {
+func (s *InvoiceService) SearchByClientID(clientID uint) ([]models.Invoice, error) {
+	if clientID == 0 {
+		return nil, errors.New("client_id is required")
+	}
 	if err := s.Repo.SyncOverdueBatch(time.Now()); err != nil {
 		return nil, err
 	}
-	return s.Repo.SearchByClient(customerName)
+	return s.Repo.SearchByClientID(clientID)
 }
 
 func (s *InvoiceService) SearchByPaymentStatus(status string) ([]models.Invoice, error) {

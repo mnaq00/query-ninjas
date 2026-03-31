@@ -13,7 +13,7 @@ import (
 
 type InvoiceRepository interface {
 	CreateInvoice(invoice *models.Invoice) error
-	SearchByClient(customerName string) ([]models.Invoice, error)
+	SearchByClientID(clientID uint) ([]models.Invoice, error)
 	SearchByPaymentStatus(status string) ([]models.Invoice, error)
 	MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error)
 	SetInvoiceDraft(id uint) (*models.Invoice, error)
@@ -51,11 +51,12 @@ func (r *InvoiceRepo) CreateInvoice(invoice *models.Invoice) error {
 	})
 }
 
-// Search by customer name (case-insensitive)
-func (r *InvoiceRepo) SearchByClient(customerName string) ([]models.Invoice, error) {
+// SearchByClientID returns invoices for the given client_id.
+func (r *InvoiceRepo) SearchByClientID(clientID uint) ([]models.Invoice, error) {
 	var matches []models.Invoice
 	err := db.DB.
-		Where("LOWER(customer_name) = ?", strings.ToLower(customerName)).
+		Preload("Items").
+		Where("client_id = ?", clientID).
 		Find(&matches).Error
 	return matches, err
 }

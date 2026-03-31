@@ -48,17 +48,22 @@ func (h *InvoiceHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// This function searches invoices based of a customer name - This is a GET request
+// SearchByClient lists invoices for a client by client_id (query: client_id).
 func (h *InvoiceHandler) SearchByClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	businessName := r.URL.Query().Get("Customer_name")
-	if businessName == "" {
-		http.Error(w, "Customer name is required", http.StatusBadRequest)
+	idStr := r.URL.Query().Get("client_id")
+	if idStr == "" {
+		http.Error(w, "client_id query parameter is required", http.StatusBadRequest)
+		return
+	}
+	clientID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil || clientID == 0 {
+		http.Error(w, "invalid client_id", http.StatusBadRequest)
 		return
 	}
 
-	matches, err := h.Service.SearchByClient(businessName) // ← CALL SERVICE
+	matches, err := h.Service.SearchByClientID(uint(clientID))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
