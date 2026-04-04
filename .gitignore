@@ -1,5 +1,8 @@
 .env
 
+# Root npm (package.json helpers only; deps live in invoice-frontend/)
+node_modules/
+
 .DS_Store
 
 bin/
@@ -9,3 +12,18 @@ bin/
 # Local PDF preview from cmd/previewpdf
 invoice_*.pdf
 cmd/previewpdf/preview_invoice_layout.pdf
+
+# React app (invoice-frontend/)
+invoice-frontend/node_modules/
+invoice-frontend/build/
+invoice-frontend/coverage/
+invoice-frontend/.env
+invoice-frontend/.env.local
+invoice-frontend/.env.development.local
+invoice-frontend/.env.test.local
+invoice-frontend/.env.production.local
+invoice-frontend/.pnp
+invoice-frontend/.pnp.js
+invoice-frontend/npm-debug.log*
+invoice-frontend/yarn-debug.log*
+invoice-frontend/yarn-error.log*

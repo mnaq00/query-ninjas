@@ -21,7 +21,17 @@ func mergeValidation(fields map[string]string, more map[string]string) {
 	}
 }
 
-func (s *ClientService) AddClient(name, email, billingAddress string) (*models.Client, error) {
+func (s *ClientService) ListClients(businessID uint) ([]models.Client, error) {
+	if businessID == 0 {
+		return nil, errors.New("business context required")
+	}
+	return s.Repo.ListClientsByBusinessID(businessID)
+}
+
+func (s *ClientService) AddClient(businessID uint, name, email, billingAddress string) (*models.Client, error) {
+	if businessID == 0 {
+		return nil, errors.New("business context required")
+	}
 	fields := make(map[string]string)
 
 	n, errMap := validate.Name(name, validate.MaxClientName, "name")
@@ -43,7 +53,7 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 		return nil, apperrors.NewValidation(fields)
 	}
 
-	existing, err := s.Repo.GetClientByEmail(em)
+	existing, err := s.Repo.GetClientByEmail(businessID, em)
 	if err == nil && existing != nil {
 		return nil, apperrors.ErrClientEmailTaken
 	}
@@ -52,6 +62,7 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	}
 
 	client := &models.Client{
+		BusinessID:     businessID,
 		Name:           n,
 		Email:          em,
 		BillingAddress: addr,
@@ -68,12 +79,15 @@ func (s *ClientService) AddClient(name, email, billingAddress string) (*models.C
 	return client, nil
 }
 
-func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, error) {
+func (s *ClientService) UpdateClient(businessID uint, client *models.Client) (*models.Client, error) {
+	if businessID == 0 {
+		return nil, errors.New("business context required")
+	}
 	if client.ID == 0 {
 		return nil, apperrors.NewValidation(map[string]string{"id": "is required"})
 	}
 
-	_, err := s.Repo.GetClientByID(client.ID)
+	_, err := s.Repo.GetClientByID(businessID, client.ID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.ErrClientNotFound
@@ -102,7 +116,7 @@ func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, err
 		return nil, apperrors.NewValidation(fields)
 	}
 
-	other, err := s.Repo.GetClientByEmail(em)
+	other, err := s.Repo.GetClientByEmail(businessID, em)
 	if err == nil && other != nil && other.ID != client.ID {
 		return nil, apperrors.ErrClientEmailTaken
 	}
@@ -113,6 +127,7 @@ func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, err
 	client.Name = n
 	client.Email = em
 	client.BillingAddress = addr
+	client.BusinessID = businessID
 
 	err = s.Repo.UpdateClient(client)
 	if err != nil {
@@ -123,4 +138,22 @@ func (s *ClientService) UpdateClient(client *models.Client) (*models.Client, err
 	}
 
 	return client, nil
+}
+
+// ArchiveClient soft-deletes the client for this business (row kept for invoice FK integrity).
+func (s *ClientService) ArchiveClient(businessID, clientID uint) error {
+	if businessID == 0 {
+		return errors.New("business context required")
+	}
+	if clientID == 0 {
+		return apperrors.NewValidation(map[string]string{"id": "is required"})
+	}
+	err := s.Repo.SoftDeleteClient(businessID, clientID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.ErrClientNotFound
+		}
+		return err
+	}
+	return nil
 }

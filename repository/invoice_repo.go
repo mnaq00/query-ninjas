@@ -13,17 +13,16 @@ import (
 
 type InvoiceRepository interface {
 	CreateInvoice(invoice *models.Invoice) error
-	SearchByClientID(clientID uint) ([]models.Invoice, error)
-	SearchByPaymentStatus(status string) ([]models.Invoice, error)
-	MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error)
-	SetInvoiceDraft(id uint) (*models.Invoice, error)
-	SetInvoiceLifecycleStatus(id uint, invoiceStatus string) error
+	SearchByClientID(clientID, businessID uint) ([]models.Invoice, error)
+	SearchByPaymentStatus(status string, businessID uint) ([]models.Invoice, error)
+	MarkInvoicePaid(id, businessID uint, paymentDate time.Time) (*models.Invoice, error)
+	SetInvoiceDraft(id, businessID uint) (*models.Invoice, error)
+	SetInvoiceLifecycleStatus(id, businessID uint, invoiceStatus string) error
 	UpdateInvoice(id uint, invoice *models.Invoice) error
-	GetInvoiceByID(id uint) (*models.Invoice, error)
-	UpdateInvoicePaymentStatus(id uint, status string) error
-	// SyncOverdueBatch: for issued invoices (invoice_status = sent/downloaded), unpaid → overdue when
-	// past due date; overdue → unpaid when due date is today or in the future.
+	GetInvoiceByIDForBusiness(id, businessID uint) (*models.Invoice, error)
+	UpdateInvoicePaymentStatus(id, businessID uint, status string) error
 	SyncOverdueBatch(now time.Time) error
+	SoftDeleteInvoice(businessID, id uint) error
 }
 
 type InvoiceRepo struct{}
@@ -51,30 +50,30 @@ func (r *InvoiceRepo) CreateInvoice(invoice *models.Invoice) error {
 	})
 }
 
-// SearchByClientID returns invoices for the given client_id.
-func (r *InvoiceRepo) SearchByClientID(clientID uint) ([]models.Invoice, error) {
+// SearchByClientID returns invoices for the client within one business.
+func (r *InvoiceRepo) SearchByClientID(clientID, businessID uint) ([]models.Invoice, error) {
 	var matches []models.Invoice
 	err := db.DB.
 		Preload("Items").
-		Where("client_id = ?", clientID).
+		Where("client_id = ? AND business_id = ?", clientID, businessID).
 		Find(&matches).Error
 	return matches, err
 }
 
-// Search by payment status (case-insensitive)
-func (r *InvoiceRepo) SearchByPaymentStatus(status string) ([]models.Invoice, error) {
+// Search by payment status (case-insensitive) within one business.
+func (r *InvoiceRepo) SearchByPaymentStatus(status string, businessID uint) ([]models.Invoice, error) {
 	var matches []models.Invoice
 	err := db.DB.
-		Where("LOWER(customer_payment_status) = ?", strings.ToLower(status)).
+		Where("business_id = ? AND LOWER(customer_payment_status) = ?", businessID, strings.ToLower(status)).
 		Find(&matches).Error
 	return matches, err
 }
 
 // Mark invoice as paid
-func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error) {
+func (r *InvoiceRepo) MarkInvoicePaid(id, businessID uint, paymentDate time.Time) (*models.Invoice, error) {
 	var invoice models.Invoice
 
-	if err := db.DB.First(&invoice, id).Error; err != nil {
+	if err := db.DB.Where("id = ? AND business_id = ?", id, businessID).First(&invoice).Error; err != nil {
 		return nil, errors.New("invoice not found")
 	}
 
@@ -89,14 +88,14 @@ func (r *InvoiceRepo) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.I
 		return nil, err
 	}
 
-	return r.GetInvoiceByID(invoice.ID)
+	return r.GetInvoiceByIDForBusiness(invoice.ID, businessID)
 }
 
 // Set invoice to draft
-func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
+func (r *InvoiceRepo) SetInvoiceDraft(id, businessID uint) (*models.Invoice, error) {
 	var invoice models.Invoice
 
-	if err := db.DB.First(&invoice, id).Error; err != nil {
+	if err := db.DB.Where("id = ? AND business_id = ?", id, businessID).First(&invoice).Error; err != nil {
 		return nil, errors.New("invoice not found")
 	}
 
@@ -111,14 +110,25 @@ func (r *InvoiceRepo) SetInvoiceDraft(id uint) (*models.Invoice, error) {
 	return &invoice, nil
 }
 
-func (r *InvoiceRepo) SetInvoiceLifecycleStatus(id uint, invoiceStatus string) error {
-	return db.DB.Model(&models.Invoice{}).
-		Where("id = ?", id).
-		Update("invoice_status", strings.TrimSpace(invoiceStatus)).Error
+func (r *InvoiceRepo) SetInvoiceLifecycleStatus(id, businessID uint, invoiceStatus string) error {
+	res := db.DB.Model(&models.Invoice{}).
+		Where("id = ? AND business_id = ?", id, businessID).
+		Update("invoice_status", strings.TrimSpace(invoiceStatus))
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // Update invoice and replace items
 func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
+	items := invoice.Items
+	invoice.Items = nil
+	defer func() { invoice.Items = items }()
+
 	return db.DB.Transaction(func(tx *gorm.DB) error {
 		invoice.ID = id
 
@@ -126,14 +136,15 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 			return err
 		}
 
-		if err := tx.Where("invoice_id = ?", id).
+		if err := tx.Unscoped().Where("invoice_id = ?", id).
 			Delete(&models.InvoiceItem{}).Error; err != nil {
 			return err
 		}
 
-		for _, item := range invoice.Items {
-			item.InvoiceID = invoice.ID
-			if err := tx.Create(&item).Error; err != nil {
+		for i := range items {
+			items[i].Model = gorm.Model{}
+			items[i].InvoiceID = invoice.ID
+			if err := tx.Create(&items[i]).Error; err != nil {
 				return err
 			}
 		}
@@ -142,23 +153,45 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 	})
 }
 
-// Get invoice by ID with items
-func (r *InvoiceRepo) GetInvoiceByID(id uint) (*models.Invoice, error) {
+// GetInvoiceByIDForBusiness loads an invoice and lines only if it belongs to the business.
+func (r *InvoiceRepo) GetInvoiceByIDForBusiness(id, businessID uint) (*models.Invoice, error) {
 	var invoice models.Invoice
 
 	if err := db.DB.
 		Preload("Items").
-		First(&invoice, id).Error; err != nil {
+		Where("id = ? AND business_id = ?", id, businessID).
+		First(&invoice).Error; err != nil {
 		return nil, err
 	}
 
 	return &invoice, nil
 }
 
-func (r *InvoiceRepo) UpdateInvoicePaymentStatus(id uint, status string) error {
-	return db.DB.Model(&models.Invoice{}).
-		Where("id = ?", id).
-		Update("customer_payment_status", status).Error
+func (r *InvoiceRepo) UpdateInvoicePaymentStatus(id, businessID uint, status string) error {
+	res := db.DB.Model(&models.Invoice{}).
+		Where("id = ? AND business_id = ?", id, businessID).
+		Update("customer_payment_status", status)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// SoftDeleteInvoice soft-deletes the invoice and its line items for this business.
+func (r *InvoiceRepo) SoftDeleteInvoice(businessID, id uint) error {
+	return db.DB.Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("id = ? AND business_id = ?", id, businessID).Delete(&models.Invoice{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Where("invoice_id = ?", id).Delete(&models.InvoiceItem{}).Error
+	})
 }
 
 func (r *InvoiceRepo) SyncOverdueBatch(now time.Time) error {

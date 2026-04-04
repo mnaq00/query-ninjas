@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"invoiceSys/apperrors"
+	"invoiceSys/middleware"
 	"invoiceSys/models"
 	"invoiceSys/services"
 
@@ -30,7 +32,7 @@ func (h *InvoiceHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Service.CreateInvoice(&req); err != nil {
+	if err := h.Service.CreateInvoice(middleware.BusinessIDFromRequest(r), &req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
@@ -63,7 +65,7 @@ func (h *InvoiceHandler) SearchByClient(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	matches, err := h.Service.SearchByClientID(uint(clientID))
+	matches, err := h.Service.SearchByClientID(middleware.BusinessIDFromRequest(r), uint(clientID))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -90,7 +92,7 @@ func (h *InvoiceHandler) ViewInvoiceStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	matches, err := h.Service.SearchByPaymentStatus(paymentStatus)
+	matches, err := h.Service.SearchByPaymentStatus(middleware.BusinessIDFromRequest(r), paymentStatus)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -120,7 +122,7 @@ func (h *InvoiceHandler) MarkInvoicePaid(w http.ResponseWriter, r *http.Request)
 	// Auto-generate NOW as payment date
 	now := time.Now()
 
-	invoice, err := h.Service.MarkInvoicePaid(uint(id), now)
+	invoice, err := h.Service.MarkInvoicePaid(middleware.BusinessIDFromRequest(r), uint(id), now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -160,7 +162,7 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	updated, err := h.Service.UpdateInvoice(uint(id), &req)
+	updated, err := h.Service.UpdateInvoice(middleware.BusinessIDFromRequest(r), uint(id), &req)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -178,6 +180,29 @@ func (h *InvoiceHandler) UpdateInvoice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *InvoiceHandler) ArchiveInvoice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	vars := mux.Vars(r)
+	idInt, err := strconv.Atoi(vars["id"])
+	if err != nil || idInt <= 0 {
+		writeJSONError(w, apperrors.NewValidation(map[string]string{"id": "invalid invoice id"}))
+		return
+	}
+
+	if err := h.Service.ArchiveInvoice(middleware.BusinessIDFromRequest(r), uint(idInt)); err != nil {
+		writeJSONError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Invoice archived"})
+}
+
 // GetInvoicePDF streams the invoice as application/pdf with attachment disposition so
 // clients (Postman “Send and Download”, browsers) save the file instead of only previewing.
 func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +216,7 @@ func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, filename, err := h.Service.RenderInvoicePDF(uint(id))
+	data, filename, err := h.Service.RenderInvoicePDF(middleware.BusinessIDFromRequest(r), uint(id))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -226,7 +251,7 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.Service.SendInvoiceEmail(uint(id), body.InvoiceStatus)
+	err = h.Service.SendInvoiceEmail(middleware.BusinessIDFromRequest(r), uint(id), body.InvoiceStatus)
 	if err != nil {
 		status := http.StatusInternalServerError
 		msg := err.Error()

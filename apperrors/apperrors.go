@@ -21,6 +21,8 @@ func (e *ValidationError) Error() string {
 var (
 	ErrClientEmailTaken = errors.New("client with this email already exists")
 	ErrClientNotFound   = errors.New("client not found")
+	ErrProductNotFound  = errors.New("product not found")
+	ErrInvoiceNotFound  = errors.New("invoice not found")
 	ErrBusinessExists   = errors.New("business already exists")
 	ErrBusinessNotFound = errors.New("business profile not found")
 )

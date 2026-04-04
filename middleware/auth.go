@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,16 +12,18 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func GenerateJWT(userID uint) (string, error) {
+// GenerateJWT issues a token with user_id and business_id (0 if the user has no business membership yet).
+func GenerateJWT(userID, businessID uint) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		return "", errors.New("JWT secret not set")
 	}
 
 	claims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-		"iat":     time.Now().Unix(),
+		"user_id":     userID,
+		"business_id": businessID,
+		"exp":         time.Now().Add(24 * time.Hour).Unix(),
+		"iat":         time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -58,11 +61,51 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		_, err := VerifyJWT(tokenString)
+		tok, err := VerifyJWT(tokenString)
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		claims, ok := tok.Claims.(jwt.MapClaims)
+		if !ok {
+			http.Error(w, "invalid token claims", http.StatusUnauthorized)
+			return
+		}
+
+		userID := claimUint(claims, "user_id")
+		if userID == 0 {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		businessID := claimUint(claims, "business_id")
+
+		ctx := ContextWithUser(r.Context(), userID)
+		ctx = ContextWithBusiness(ctx, businessID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func claimUint(m jwt.MapClaims, key string) uint {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return uint(n)
+	case int:
+		return uint(n)
+	case int64:
+		return uint(n)
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0
+		}
+		return uint(i)
+	default:
+		return 0
+	}
 }

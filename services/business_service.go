@@ -12,10 +12,11 @@ import (
 )
 
 type BusinessService struct {
-	Repo *repository.BusinessRepo
+	Repo    *repository.BusinessRepo
+	UserBiz *repository.UserBusinessRepo
 }
 
-func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
+func (s *BusinessService) CreateBusinessProfile(req *models.Business, userID uint) error {
 	if req.ID != 0 {
 		_, err := s.Repo.GetBusinessProfile(req.ID)
 		if err == nil {
@@ -75,6 +76,11 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business) error {
 			return apperrors.ErrBusinessExists
 		}
 		return err
+	}
+	if userID != 0 && s.UserBiz != nil {
+		if err := s.UserBiz.CreateLink(userID, req.ID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -151,4 +157,16 @@ func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
 		return err
 	}
 	return nil
+}
+
+// UpdateBusinessProfileForTenant updates the profile for the JWT tenant; ignores a mismatched id in the body.
+func (s *BusinessService) UpdateBusinessProfileForTenant(tenantBusinessID uint, req *models.Business) error {
+	if tenantBusinessID == 0 {
+		return errors.New("business context required")
+	}
+	if req.ID != 0 && req.ID != tenantBusinessID {
+		return errors.New("cannot update another business")
+	}
+	req.ID = tenantBusinessID
+	return s.UpdateBusinessProfile(req)
 }

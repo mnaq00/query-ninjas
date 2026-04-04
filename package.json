@@ -1,0 +1,11 @@
+{
+  "name": "query-ninjas",
+  "private": true,
+  "description": "Monorepo: Go API (root) + React app in invoice-frontend/",
+  "scripts": {
+    "postinstall": "npm --prefix invoice-frontend install",
+    "start": "npm --prefix invoice-frontend start",
+    "build:frontend": "npm --prefix invoice-frontend run build",
+    "test:frontend": "npm --prefix invoice-frontend test"
+  }
+}

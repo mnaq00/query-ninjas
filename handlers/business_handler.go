@@ -3,8 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
+	"invoiceSys/middleware"
 	"invoiceSys/models"
 	"invoiceSys/services"
 )
@@ -23,7 +23,14 @@ func (h *BusinessHandler) CreateBusinessProfile(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	err := h.Service.CreateBusinessProfile(&signUp)
+	userID := middleware.UserIDFromRequest(r)
+	err := h.Service.CreateBusinessProfile(&signUp, userID)
+	if err != nil {
+		writeJSONError(w, err)
+		return
+	}
+
+	token, err := middleware.GenerateJWT(userID, signUp.ID)
 	if err != nil {
 		writeJSONError(w, err)
 		return
@@ -31,20 +38,23 @@ func (h *BusinessHandler) CreateBusinessProfile(w http.ResponseWriter, r *http.R
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(signUp)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"business":    signUp,
+		"token":       token,
+		"business_id": signUp.ID,
+	})
 }
 
 func (h *BusinessHandler) GetBusinessProfile(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
+	businessID := middleware.BusinessIDFromRequest(r)
+	if businessID == 0 {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid id"})
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "no business context"})
 		return
 	}
 
-	profile, err := h.Service.GetBusinessProfile(uint(id))
+	profile, err := h.Service.GetBusinessProfile(businessID)
 	if err != nil {
 		writeJSONError(w, err)
 		return
@@ -65,7 +75,7 @@ func (h *BusinessHandler) UpdateBusinessProfile(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	err := h.Service.UpdateBusinessProfile(&profile)
+	err := h.Service.UpdateBusinessProfileForTenant(middleware.BusinessIDFromRequest(r), &profile)
 	if err != nil {
 		writeJSONError(w, err)
 		return

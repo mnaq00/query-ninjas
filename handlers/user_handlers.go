@@ -52,14 +52,13 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// call service layer
-	token, err := h.Service.Login(&login)
+	out, err := h.Service.Login(&login)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	//response
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(token)
+	_ = json.NewEncoder(w).Encode(out)
 }

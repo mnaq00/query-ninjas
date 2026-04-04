@@ -41,13 +41,25 @@ connStr := fmt.Sprintf(
 	DB.Raw("SELECT current_database()").Scan(&dbName)
 	fmt.Println("Actually connected to database:", dbName)
 
+	if err := migrateDropLegacyClientEmailUnique(DB); err != nil {
+		log.Printf("drop legacy client email unique: %v", err)
+	}
+
 	//migrate the schema
-	err = DB.AutoMigrate(&models.User{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{})
+	err = DB.AutoMigrate(&models.User{}, &models.UserBusiness{}, &models.Business{}, &models.Invoice{}, &models.Client{}, &models.Product{}, &models.InvoiceItem{})
 	if err != nil {
 		fmt.Println("Migration error:", err)
 		log.Fatal("Failed to migrate schema", err)
 	} else {
 		fmt.Println("Tables migrated successfully!")
+	}
+
+	if err := migrateProductClientBusinessID(DB); err != nil {
+		log.Printf("product/client business_id backfill: %v", err)
+	}
+
+	if err := migrateUserBusinessMembershipDefaults(DB); err != nil {
+		log.Printf("user_businesses default links: %v", err)
 	}
 
 	if err := migrateLegacyInvoiceStatusColumns(DB); err != nil {
@@ -63,6 +75,37 @@ connStr := fmt.Sprintf(
 	}
 
 	fmt.Println("Connected to database successfully!")
+}
+
+// migrateDropLegacyClientEmailUnique removes the old global-unique on email so (business_id, email) can apply.
+func migrateDropLegacyClientEmailUnique(db *gorm.DB) error {
+	if !db.Migrator().HasTable("clients") {
+		return nil
+	}
+	return db.Exec(`
+		ALTER TABLE clients DROP CONSTRAINT IF EXISTS uni_clients_email
+	`).Error
+}
+
+// migrateProductClientBusinessID assigns legacy catalog rows to business 1.
+func migrateProductClientBusinessID(db *gorm.DB) error {
+	if err := db.Exec(`
+		UPDATE products SET business_id = 1 WHERE business_id IS NULL OR business_id = 0
+	`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`
+		UPDATE clients SET business_id = 1 WHERE business_id IS NULL OR business_id = 0
+	`).Error
+}
+
+// migrateUserBusinessMembershipDefaults links every user to business 1 if they have no membership (legacy single-tenant).
+func migrateUserBusinessMembershipDefaults(db *gorm.DB) error {
+	return db.Exec(`
+		INSERT INTO user_businesses (user_id, business_id)
+		SELECT u.id, 1 FROM users u
+		WHERE NOT EXISTS (SELECT 1 FROM user_businesses ub WHERE ub.user_id = u.id)
+	`).Error
 }
 
 // migrateLegacyInvoiceStatusColumns maps rows that still use the old combined customer_payment_status

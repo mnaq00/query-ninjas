@@ -19,14 +19,15 @@ func main() {
 
 	// initialize repositories
 	userRepo := &repository.UserRepo{}
+	userBizRepo := &repository.UserBusinessRepo{}
 	businessRepo := &repository.BusinessRepo{}
 	invoiceRepo := &repository.InvoiceRepo{}
 	clientRepo := &repository.ClientRepo{}
 	productRepo := &repository.ProductRepo{}
 
 	// initialize service
-	userService := &services.UserService{Repo: userRepo}
-	businessService := &services.BusinessService{Repo: businessRepo}
+	userService := &services.UserService{Repo: userRepo, UserBiz: userBizRepo}
+	businessService := &services.BusinessService{Repo: businessRepo, UserBiz: userBizRepo}
 
 	invoiceService := &services.InvoiceService{
 		Repo:            invoiceRepo,
@@ -46,7 +47,7 @@ func main() {
 	productHandler := &handlers.ProductHandler{ProductService: productService}
 
 	//routes
-	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler, productHandler)
+	r := routes.SetupRouter(userHandler, businessHandler, invoiceHandler, clientHandler, productHandler, userBizRepo)
 
 	port := os.Getenv("PORT")
 	if port == "" {

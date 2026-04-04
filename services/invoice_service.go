@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"invoiceSys/apperrors"
 	"invoiceSys/models"
 	"invoiceSys/repository"
 	"mime/multipart"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jung-kurt/gofpdf"
+	"gorm.io/gorm"
 )
 
 // invoicePDFLogoWidthMM is the logo width on the page; height scales to preserve aspect ratio.
@@ -66,41 +68,86 @@ type InvoiceService struct {
 	BusinessService *BusinessService
 }
 
-// enrichInvoiceItemsFromProducts loads product_name, description, and price from the catalog.
-// Call only when creating or updating an invoice so those values are snapshotted in invoice_items.
-// Do not call when rendering PDF/email for existing invoices — that would overwrite past line items.
-func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceItem) error {
+// enrichInvoiceItemFromProduct fills product_name, description, and price from the catalog.
+// If catalogPriceOnly is true, price always comes from the product row (latest catalog).
+// If false, a positive item.Price from the request is kept; catalog price is used only when item.Price <= 0.
+func (s *InvoiceService) enrichInvoiceItemFromProduct(item *models.InvoiceItem, businessID uint, catalogPriceOnly bool) error {
+	if item.ProductID == 0 {
+		return errors.New("each line item must include a product_id")
+	}
+	if s.ProductRepo == nil {
+		return fmt.Errorf("product catalog not configured (product_id %d)", item.ProductID)
+	}
+	p, err := s.ProductRepo.GetByID(businessID, item.ProductID)
+	if err != nil {
+		return fmt.Errorf("product id %d not found", item.ProductID)
+	}
+	item.ProductName = strings.TrimSpace(p.ProductName)
+	if item.ProductName == "" {
+		item.ProductName = strings.TrimSpace(p.Description)
+	}
+	if item.ProductName == "" {
+		item.ProductName = fmt.Sprintf("Product #%d", item.ProductID)
+	}
+	item.Description = strings.TrimSpace(p.Description)
+	if catalogPriceOnly || item.Price <= 0 {
+		item.Price = p.Price
+	}
+	if item.Price <= 0 {
+		return fmt.Errorf("product id %d has no valid price", item.ProductID)
+	}
+	return nil
+}
+
+// enrichInvoiceItemsFromProducts loads product_name, description, and price from the catalog when creating/updating.
+// A positive request price overrides the catalog price; otherwise the catalog price is used.
+func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceItem, businessID uint) error {
 	if items == nil {
 		return nil
 	}
 	for i := range *items {
-		item := &(*items)[i]
-		if item.ProductID == 0 {
-			return errors.New("each line item must include a product_id")
-		}
-		if s.ProductRepo == nil {
-			return fmt.Errorf("product catalog not configured (product_id %d)", item.ProductID)
-		}
-		p, err := s.ProductRepo.GetByID(item.ProductID)
-		if err != nil {
-			return fmt.Errorf("product id %d not found", item.ProductID)
-		}
-		item.ProductName = strings.TrimSpace(p.ProductName)
-		if item.ProductName == "" {
-			item.ProductName = strings.TrimSpace(p.Description)
-		}
-		if item.ProductName == "" {
-			item.ProductName = fmt.Sprintf("Product #%d", item.ProductID)
-		}
-		item.Description = strings.TrimSpace(p.Description)
-		if item.Price <= 0 {
-			item.Price = p.Price
-		}
-		if item.Price <= 0 {
-			return fmt.Errorf("product id %d has no valid price", item.ProductID)
+		if err := s.enrichInvoiceItemFromProduct(&(*items)[i], businessID, false); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// refreshInvoiceLinesFromCatalogAndPersist reloads each line from the product table, recomputes line totals
+// and invoice subtotal/tax/total, and saves. Skipped for paid invoices so amounts stay frozen after payment.
+func (s *InvoiceService) refreshInvoiceLinesFromCatalogAndPersist(inv *models.Invoice) (*models.Invoice, error) {
+	if strings.EqualFold(strings.TrimSpace(inv.Customer_payment_status), models.PaymentStatusPaid) {
+		return inv, nil
+	}
+	if len(inv.Items) == 0 {
+		return nil, errors.New("invoice has no line items")
+	}
+	for i := range inv.Items {
+		if err := s.enrichInvoiceItemFromProduct(&inv.Items[i], inv.BusinessID, true); err != nil {
+			return nil, err
+		}
+	}
+	var subtotal float64
+	for i := range inv.Items {
+		item := &inv.Items[i]
+		if item.Quantity <= 0 {
+			return nil, errors.New("item quantity must be greater than 0")
+		}
+		item.LineTotal = item.Price * float64(item.Quantity)
+		subtotal += item.LineTotal
+	}
+	inv.Subtotal = subtotal
+	inv.TaxAmount = subtotal * (inv.TaxRate / 100.0)
+	inv.Total = inv.Subtotal + inv.TaxAmount
+
+	for i := range inv.Items {
+		inv.Items[i].Model = gorm.Model{}
+		inv.Items[i].InvoiceID = inv.ID
+	}
+	if err := s.Repo.UpdateInvoice(inv.ID, inv); err != nil {
+		return nil, err
+	}
+	return s.Repo.GetInvoiceByIDForBusiness(inv.ID, inv.BusinessID)
 }
 
 func validInvoiceLifecycle(s string) bool {
@@ -129,7 +176,7 @@ func (s *InvoiceService) reconcileOverdueInDB(inv *models.Invoice) (updated bool
 	pastDue := calendarDatePastDue(inv.PaymentDueDate, time.Now())
 	if pastDue {
 		if pay == models.PaymentStatusUnpaid {
-			if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, models.PaymentStatusOverdue); err != nil {
+			if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, inv.BusinessID, models.PaymentStatusOverdue); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -137,7 +184,7 @@ func (s *InvoiceService) reconcileOverdueInDB(inv *models.Invoice) (updated bool
 		return false, nil
 	}
 	if pay == models.PaymentStatusOverdue {
-		if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, models.PaymentStatusUnpaid); err != nil {
+		if err := s.Repo.UpdateInvoicePaymentStatus(inv.ID, inv.BusinessID, models.PaymentStatusUnpaid); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -153,7 +200,7 @@ func (s *InvoiceService) reloadInvoiceIfReconciled(inv *models.Invoice) (*models
 	if !changed {
 		return inv, nil
 	}
-	return s.Repo.GetInvoiceByID(inv.ID)
+	return s.Repo.GetInvoiceByIDForBusiness(inv.ID, inv.BusinessID)
 }
 
 // loadBusinessForInvoice loads the business profile for PDF/email using invoice.BusinessID.
@@ -174,11 +221,12 @@ func (s *InvoiceService) loadBusinessForInvoice(invoice *models.Invoice) (*model
 }
 
 // Musa
-func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
-
-	if req.BusinessID == 0 {
-		return errors.New("business_id is required")
+func (s *InvoiceService) CreateInvoice(tenantBusinessID uint, req *models.Invoice) error {
+	if tenantBusinessID == 0 {
+		return errors.New("business context required")
 	}
+	req.BusinessID = tenantBusinessID
+
 	if s.BusinessService == nil {
 		return errors.New("business service not configured")
 	}
@@ -194,7 +242,7 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 		return errors.New("at least one invoice item is required")
 	}
 
-	if err := s.enrichInvoiceItemsFromProducts(&req.Items); err != nil {
+	if err := s.enrichInvoiceItemsFromProducts(&req.Items, tenantBusinessID); err != nil {
 		return err
 	}
 
@@ -221,12 +269,10 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 	if s.ClientRepo == nil {
 		return errors.New("client repository not configured")
 	}
-	client, err := s.ClientRepo.GetClientByID(req.ClientID)
+	client, err := s.ClientRepo.GetClientByID(tenantBusinessID, req.ClientID)
 	if err != nil {
 		return errors.New("client not found")
 	}
-
-	req.Subtotal = subtotal
 
 	if strings.TrimSpace(req.InvoiceStatus) == "" {
 		req.InvoiceStatus = models.InvoiceStatusDraft
@@ -256,7 +302,7 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 	if err := s.Repo.CreateInvoice(req); err != nil {
 		return err
 	}
-	inv, err := s.Repo.GetInvoiceByID(req.ID)
+	inv, err := s.Repo.GetInvoiceByIDForBusiness(req.ID, tenantBusinessID)
 	if err != nil {
 		return err
 	}
@@ -268,7 +314,7 @@ func (s *InvoiceService) CreateInvoice(req *models.Invoice) error {
 	return nil
 }
 
-func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*models.Invoice, error) {
+func (s *InvoiceService) UpdateInvoice(tenantBusinessID uint, id uint, invoice *models.Invoice) (*models.Invoice, error) {
 	if invoice.ClientID == 0 {
 		return nil, errors.New("client id is required")
 	}
@@ -281,7 +327,7 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 		return nil, errors.New("vat rate cannot be negative")
 	}
 
-	existing, err := s.Repo.GetInvoiceByID(id)
+	existing, err := s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
 	if err != nil {
 		return nil, err
 	}
@@ -306,12 +352,7 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 	if invoice.PaymentDueDate.IsZero() {
 		invoice.PaymentDueDate = existing.PaymentDueDate
 	}
-	if invoice.BusinessID == 0 {
-		invoice.BusinessID = existing.BusinessID
-	}
-	if invoice.BusinessID == 0 {
-		return nil, errors.New("business_id is required")
-	}
+	invoice.BusinessID = tenantBusinessID
 	if s.BusinessService == nil {
 		return nil, errors.New("business service not configured")
 	}
@@ -319,7 +360,7 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 		return nil, errors.New("business not found")
 	}
 
-	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items); err != nil {
+	if err := s.enrichInvoiceItemsFromProducts(&invoice.Items, tenantBusinessID); err != nil {
 		return nil, err
 	}
 
@@ -349,7 +390,7 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 		invoice.BillingEmail = existing.BillingEmail
 		invoice.BillingAddress = existing.BillingAddress
 	} else {
-		client, err := s.ClientRepo.GetClientByID(invoice.ClientID)
+		client, err := s.ClientRepo.GetClientByID(tenantBusinessID, invoice.ClientID)
 		if err != nil {
 			return nil, errors.New("client not found")
 		}
@@ -367,42 +408,80 @@ func (s *InvoiceService) UpdateInvoice(id uint, invoice *models.Invoice) (*model
 	if err := s.Repo.UpdateInvoice(id, invoice); err != nil {
 		return nil, err
 	}
-	inv, err := s.Repo.GetInvoiceByID(id)
+	inv, err := s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
 	if err != nil {
 		return nil, err
 	}
 	return s.reloadInvoiceIfReconciled(inv)
 }
 
-func (s *InvoiceService) SearchByClientID(clientID uint) ([]models.Invoice, error) {
+// ArchiveInvoice soft-deletes the invoice and its line items for this business.
+func (s *InvoiceService) ArchiveInvoice(businessID, invoiceID uint) error {
+	if businessID == 0 {
+		return errors.New("business context required")
+	}
+	if invoiceID == 0 {
+		return apperrors.NewValidation(map[string]string{"id": "is required"})
+	}
+	err := s.Repo.SoftDeleteInvoice(businessID, invoiceID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.ErrInvoiceNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *InvoiceService) SearchByClientID(tenantBusinessID, clientID uint) ([]models.Invoice, error) {
+	if tenantBusinessID == 0 {
+		return nil, errors.New("business context required")
+	}
 	if clientID == 0 {
 		return nil, errors.New("client_id is required")
 	}
+	if s.ClientRepo != nil {
+		if _, err := s.ClientRepo.GetClientByID(tenantBusinessID, clientID); err != nil {
+			return nil, errors.New("client not found")
+		}
+	}
 	if err := s.Repo.SyncOverdueBatch(time.Now()); err != nil {
 		return nil, err
 	}
-	return s.Repo.SearchByClientID(clientID)
+	return s.Repo.SearchByClientID(clientID, tenantBusinessID)
 }
 
-func (s *InvoiceService) SearchByPaymentStatus(status string) ([]models.Invoice, error) {
+func (s *InvoiceService) SearchByPaymentStatus(tenantBusinessID uint, status string) ([]models.Invoice, error) {
+	if tenantBusinessID == 0 {
+		return nil, errors.New("business context required")
+	}
 	if err := s.Repo.SyncOverdueBatch(time.Now()); err != nil {
 		return nil, err
 	}
-	return s.Repo.SearchByPaymentStatus(status)
+	return s.Repo.SearchByPaymentStatus(status, tenantBusinessID)
 }
 
-func (s *InvoiceService) MarkInvoicePaid(id uint, paymentDate time.Time) (*models.Invoice, error) {
-	return s.Repo.MarkInvoicePaid(id, paymentDate)
+func (s *InvoiceService) MarkInvoicePaid(tenantBusinessID uint, id uint, paymentDate time.Time) (*models.Invoice, error) {
+	if tenantBusinessID == 0 {
+		return nil, errors.New("business context required")
+	}
+	return s.Repo.MarkInvoicePaid(id, tenantBusinessID, paymentDate)
 }
 
-func (s *InvoiceService) SaveInvoiceDraft(id uint) (*models.Invoice, error) {
-	return s.Repo.SetInvoiceDraft(id)
+func (s *InvoiceService) SaveInvoiceDraft(tenantBusinessID uint, id uint) (*models.Invoice, error) {
+	if tenantBusinessID == 0 {
+		return nil, errors.New("business context required")
+	}
+	return s.Repo.SetInvoiceDraft(id, tenantBusinessID)
 }
 
 // RenderInvoicePDF builds the invoice PDF in memory for HTTP responses (browser / Postman / deployed API).
 // Draft invoices are allowed so users can preview before sending.
-func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string, err error) {
-	invoice, err := s.Repo.GetInvoiceByID(id)
+func (s *InvoiceService) RenderInvoicePDF(tenantBusinessID uint, id uint) (pdf []byte, filename string, err error) {
+	if tenantBusinessID == 0 {
+		return nil, "", errors.New("business context required")
+	}
+	invoice, err := s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -410,11 +489,15 @@ func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string,
 	if err != nil {
 		return nil, "", err
 	}
+	invoice, err = s.refreshInvoiceLinesFromCatalogAndPersist(invoice)
+	if err != nil {
+		return nil, "", err
+	}
 	if s.ClientRepo == nil {
 		return nil, "", errors.New("client repository not configured")
 	}
 	var client *models.Client
-	if c, e := s.ClientRepo.GetClientByID(invoice.ClientID); e == nil {
+	if c, e := s.ClientRepo.GetClientByID(tenantBusinessID, invoice.ClientID); e == nil {
 		client = c
 	}
 	billName, _, _ := invoiceBillToFields(invoice, client)
@@ -443,13 +526,16 @@ func (s *InvoiceService) RenderInvoicePDF(id uint) (pdf []byte, filename string,
 // Robel
 // bodyInvoiceStatus must normalize to ready_to_send (e.g. JSON "ready_to_send" or "ready to send").
 // If the invoice is draft, it is promoted to ready_to_send in the DB before sending (no prior PUT).
-func (s *InvoiceService) SendInvoiceEmail(id uint, bodyInvoiceStatus string) error {
+func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyInvoiceStatus string) error {
+	if tenantBusinessID == 0 {
+		return errors.New("business context required")
+	}
 	want := models.NormalizeInvoiceStatus(bodyInvoiceStatus)
 	if want != models.InvoiceStatusReadyToSend {
 		return errors.New(`request body must include "invoice_status": "ready_to_send" (or "ready to send")`)
 	}
 
-	invoice, err := s.Repo.GetInvoiceByID(id)
+	invoice, err := s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
 	if err != nil {
 		return err
 	}
@@ -461,10 +547,10 @@ func (s *InvoiceService) SendInvoiceEmail(id uint, bodyInvoiceStatus string) err
 	cur := models.NormalizeInvoiceStatus(invoice.InvoiceStatus)
 	switch cur {
 	case models.InvoiceStatusDraft:
-		if err := s.Repo.SetInvoiceLifecycleStatus(id, models.InvoiceStatusReadyToSend); err != nil {
+		if err := s.Repo.SetInvoiceLifecycleStatus(id, tenantBusinessID, models.InvoiceStatusReadyToSend); err != nil {
 			return err
 		}
-		invoice, err = s.Repo.GetInvoiceByID(id)
+		invoice, err = s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
 		if err != nil {
 			return err
 		}
@@ -474,11 +560,16 @@ func (s *InvoiceService) SendInvoiceEmail(id uint, bodyInvoiceStatus string) err
 		return errors.New("email send is only allowed when invoice is draft, ready_to_send, or sent/downloaded")
 	}
 
+	invoice, err = s.refreshInvoiceLinesFromCatalogAndPersist(invoice)
+	if err != nil {
+		return err
+	}
+
 	if s.ClientRepo == nil {
 		return errors.New("client repository not configured")
 	}
 	var client *models.Client
-	if c, e := s.ClientRepo.GetClientByID(invoice.ClientID); e == nil {
+	if c, e := s.ClientRepo.GetClientByID(tenantBusinessID, invoice.ClientID); e == nil {
 		client = c
 	}
 	billName, toEmail, _ := invoiceBillToFields(invoice, client)
@@ -642,7 +733,7 @@ func (s *InvoiceService) SendInvoiceEmail(id uint, bodyInvoiceStatus string) err
 	}
 
 	// Mark as issued (sent/downloaded); payment stays unpaid until marked paid.
-	return s.Repo.SetInvoiceLifecycleStatus(id, models.InvoiceStatusSentDownloaded)
+	return s.Repo.SetInvoiceLifecycleStatus(id, tenantBusinessID, models.InvoiceStatusSentDownloaded)
 }
 
 // func GenerateInvoicePDF(invoice *models.Invoice) (string, error) {

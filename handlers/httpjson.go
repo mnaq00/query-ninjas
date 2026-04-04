@@ -48,6 +48,14 @@ func writeJSONError(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
+	case errors.Is(err, apperrors.ErrProductNotFound):
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	case errors.Is(err, apperrors.ErrInvoiceNotFound):
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
 	case errors.Is(err, apperrors.ErrBusinessExists):
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

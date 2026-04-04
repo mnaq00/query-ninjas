@@ -11,5 +11,4 @@ type Business struct {
 	VATID        string `json:"vat_id"`
 	// Optional; omitted or empty JSON → nil → NULL in DB (not an empty string).
 	LogoURL *string `gorm:"type:varchar(512)" json:"logo_url"`
-
 }
