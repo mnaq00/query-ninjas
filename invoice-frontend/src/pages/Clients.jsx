@@ -215,7 +215,7 @@ function shallowMergeNestedObjects(base) {
   return out;
 }
 
-/** Merge nested client/customer blobs (two passes so Client → fields hoists email/phone). */
+/** Merge nested client/customer blobs (two passes so Client → fields hoists email). */
 function flattenClientRecord(obj) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
   return shallowMergeNestedObjects(shallowMergeNestedObjects(obj));
@@ -231,21 +231,6 @@ function pickEmailFromKeys(obj) {
     if (v == null || typeof v === "boolean" || (typeof v === "object" && v !== null)) continue;
     const s = String(v).trim();
     if (s.includes("@") || /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s) || s.length > 3) return s;
-  }
-  return "";
-}
-
-/** Last resort: any key that looks like a phone field. */
-function pickPhoneFromKeys(obj) {
-  if (!obj || typeof obj !== "object") return "";
-  for (const key of Object.keys(obj)) {
-    if (!/(^|_)(phone|mobile|cell|tel|telephone|fax|whatsapp)|^(phone|mobile|tel)/i.test(key)) continue;
-    if (/address|name|company|country|code$/i.test(key) && !/phone|mobile|tel/i.test(key)) continue;
-    const v = obj[key];
-    if (v == null || typeof v === "boolean") continue;
-    if (typeof v === "object" && v !== null) continue;
-    const s = String(v).trim();
-    if (s !== "") return s;
   }
   return "";
 }
@@ -340,50 +325,6 @@ function clientBilling(c) {
   ]);
 }
 
-function clientPhone(c) {
-  const o = flattenClientRecord(c);
-  const direct = pickFirstString(o, [
-    "phone",
-    "Phone",
-    "phone_number",
-    "PhoneNumber",
-    "phoneNumber",
-    "mobile",
-    "Mobile",
-    "tel",
-    "Tel",
-    "telephone",
-    "Telephone",
-    "contact_phone",
-    "ContactPhone",
-    "customer_phone",
-    "Customer_phone",
-    "CustomerPhone",
-    "cell",
-    "Cell",
-    "cell_phone",
-    "CellPhone",
-    "mobile_phone",
-    "MobilePhone",
-    "phone_no",
-    "PhoneNo",
-    "fax",
-    "Fax",
-    "fax_number",
-    "FaxNumber",
-    "whatsapp",
-    "WhatsApp",
-    "Customer_phone_number",
-    "customer_phone_number",
-    "ContactNumber",
-    "contact_number",
-    "contact_number_phone",
-    "MSISDN",
-    "msisdn",
-  ]);
-  return direct || pickPhoneFromKeys(o);
-}
-
 function normalizeClientPayload(data) {
   if (!data || typeof data !== "object") return {};
   return flattenClientRecord(data);
@@ -396,7 +337,6 @@ function applyClientToEditSetters(data, setters) {
   setters.setEditName(clientName(c));
   setters.setEditEmail(clientEmail(c));
   setters.setEditBilling(clientBilling(c));
-  setters.setEditPhone(clientPhone(c) === "" ? "" : String(clientPhone(c)));
   setters.setEditLoaded(true);
 }
 
@@ -455,7 +395,6 @@ export default function Clients() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editBilling, setEditBilling] = useState("");
-  const [editPhone, setEditPhone] = useState("");
   const [editLoaded, setEditLoaded] = useState(false);
   const [editLoadLoading, setEditLoadLoading] = useState(false);
   const [editSaveLoading, setEditSaveLoading] = useState(false);
@@ -599,7 +538,6 @@ export default function Clients() {
     setEditName,
     setEditEmail,
     setEditBilling,
-    setEditPhone,
     setEditLoaded,
   };
 
@@ -720,7 +658,6 @@ export default function Clients() {
         name: editName.trim(),
         email: editEmail.trim(),
         billing_address: editBilling.trim(),
-        phone: editPhone.trim(),
       });
       setStoredClientId(id);
       setEditSuccess("Client updated.");
@@ -989,10 +926,6 @@ export default function Clients() {
             <label className="field">
               Billing address
               <textarea value={editBilling} onChange={(e) => setEditBilling(e.target.value)} required />
-            </label>
-            <label className="field">
-              Phone number
-              <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
             </label>
             <button type="submit" className="btn" disabled={editSaveLoading}>
               {editSaveLoading ? "Saving…" : "Save changes"}
