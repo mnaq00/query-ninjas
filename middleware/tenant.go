@@ -16,7 +16,7 @@ func TenantMiddleware(userBiz *repository.UserBusinessRepo) func(http.Handler) h
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 				_ = json.NewEncoder(w).Encode(map[string]string{
-					"error": "no business context: create a business profile (POST /business-profile) then sign in again to receive a token with business_id",
+					"error": "Business profile must be created.",
 				})
 				return
 			}
