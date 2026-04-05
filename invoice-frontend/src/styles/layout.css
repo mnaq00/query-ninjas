@@ -1330,14 +1330,14 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 }
 
 .data-table.line-items-table .col-name {
-  width: 22%;
-  max-width: 9.5rem;
+  width: 42%;
   min-width: 0;
 }
 
 .data-table.line-items-table .col-qty {
-  width: 6rem;
-  min-width: 6rem;
+  /* was 6rem; reduced by 60% → 40% of prior width */
+  width: 2.4rem;
+  min-width: 2.4rem;
   white-space: nowrap;
 }
 
