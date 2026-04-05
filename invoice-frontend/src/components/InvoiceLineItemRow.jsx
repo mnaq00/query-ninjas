@@ -86,7 +86,7 @@ export default function InvoiceLineItemRow({
           required
         />
       </td>
-      <td>
+      <td className="col-name">
         <input
           type="text"
           readOnly

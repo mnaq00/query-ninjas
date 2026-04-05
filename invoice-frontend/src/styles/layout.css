@@ -1304,6 +1304,11 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 
 .data-table.line-items-table thead th.col-actions {
   text-align: right;
+  white-space: nowrap;
+}
+
+.data-table.line-items-table thead th.col-name {
+  min-width: 0;
 }
 
 .data-table.line-items-table tbody tr {
@@ -1320,20 +1325,24 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 }
 
 .data-table.line-items-table .col-id {
-  min-width: 6.5rem;
-  width: 22%;
+  min-width: 4.5rem;
+  width: 12%;
+}
+
+.data-table.line-items-table .col-name {
+  width: auto;
+  min-width: 0;
 }
 
 .data-table.line-items-table .col-qty {
-  width: 5.5rem;
+  width: 3.75rem;
+  min-width: 3.75rem;
   white-space: nowrap;
 }
 
 .data-table.line-items-table .col-actions {
-  /* Fixed min width so the remove control is never squeezed to zero with table-layout: fixed */
-  width: 2.75rem;
-  min-width: 2.75rem;
-  max-width: 3rem;
+  width: 5.5rem;
+  min-width: 5.5rem;
   white-space: nowrap;
   text-align: right;
   vertical-align: middle;

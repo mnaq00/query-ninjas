@@ -1545,7 +1545,7 @@ export default function Invoices() {
                 <thead>
                   <tr>
                     <th className="col-id">Product ID</th>
-                    <th>Name</th>
+                    <th className="col-name">Name</th>
                     <th className="col-qty">Qty</th>
                     <th className="col-actions">Actions</th>
                   </tr>
