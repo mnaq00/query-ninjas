@@ -29,7 +29,7 @@ func businessLogoFilePath(biz *models.Business) string {
 	if biz == nil || biz.LogoURL == nil {
 		return ""
 	}
-	return strings.TrimSpace(*biz.LogoURL)
+	return LogoURLForPDF(biz.LogoURL)
 }
 
 // invoiceBillToFields prefers frozen snapshot on the invoice; falls back to live client for legacy rows.

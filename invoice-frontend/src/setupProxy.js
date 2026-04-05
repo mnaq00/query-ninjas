@@ -24,7 +24,7 @@ function agentForTarget(urlString) {
   }
 }
 
-const apiPrefixes = ["/business-profile", "/login", "/register", "/clients", "/products", "/invoices"];
+const apiPrefixes = ["/business-profile", "/login", "/register", "/clients", "/products", "/invoices", "/uploads"];
 
 function matchesApiPath(pathname) {
   return apiPrefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));

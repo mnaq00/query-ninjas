@@ -2,10 +2,12 @@ package routes
 
 import (
 	"net/http"
+	"os"
 
 	"invoiceSys/handlers"
 	"invoiceSys/middleware"
 	"invoiceSys/repository"
+	"invoiceSys/services"
 
 	"github.com/gorilla/mux"
 )
@@ -19,6 +21,10 @@ func SetupRouter(
 	userBizRepo *repository.UserBusinessRepo,
 ) *mux.Router {
 	r := mux.NewRouter()
+
+	uploadRoot := services.LogoUploadDir()
+	_ = os.MkdirAll(uploadRoot, 0755)
+	r.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadRoot))))
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

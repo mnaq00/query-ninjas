@@ -54,7 +54,7 @@ func (s *BusinessService) CreateBusinessProfile(req *models.Business, userID uin
 		mergeValidation(fields, errMap)
 	}
 
-	logo, errMap := validate.LogoURL(req.LogoURL)
+	logo, errMap := validate.LogoReference(req.LogoURL)
 	if errMap != nil {
 		mergeValidation(fields, errMap)
 	}
@@ -133,7 +133,7 @@ func (s *BusinessService) UpdateBusinessProfile(req *models.Business) error {
 		mergeValidation(fields, errMap)
 	}
 
-	logo, errMap := validate.LogoURL(req.LogoURL)
+	logo, errMap := validate.LogoReference(req.LogoURL)
 	if errMap != nil {
 		mergeValidation(fields, errMap)
 	}

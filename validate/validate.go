@@ -3,6 +3,7 @@ package validate
 import (
 	"net/mail"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -151,4 +152,34 @@ func LogoURL(p *string) (*string, map[string]string) {
 	}
 	out := s
 	return &out, nil
+}
+
+// LogoReference accepts nil, empty, http(s) URLs, uploaded paths (/uploads/...), or legacy absolute paths.
+func LogoReference(p *string) (*string, map[string]string) {
+	if p == nil {
+		return nil, nil
+	}
+	s := strings.TrimSpace(*p)
+	if s == "" {
+		return nil, nil
+	}
+	if len(s) > MaxLogoURL {
+		return nil, map[string]string{"logo_url": "is too long"}
+	}
+	if strings.Contains(s, "..") {
+		return nil, map[string]string{"logo_url": "invalid path"}
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return LogoURL(p)
+	}
+	if strings.HasPrefix(s, "/uploads/") {
+		out := s
+		return &out, nil
+	}
+	if filepath.IsAbs(s) {
+		c := filepath.Clean(s)
+		return &c, nil
+	}
+	return nil, map[string]string{"logo_url": "must be a valid URL, /uploads/ path, or absolute file path"}
 }
