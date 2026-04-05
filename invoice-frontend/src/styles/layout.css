@@ -1331,22 +1331,23 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
   min-height: 2.65rem;
 }
 
-/* Product ID and QTY share the same width; name fills the row between them and Actions */
-.data-table.line-items-table .col-id,
-.data-table.line-items-table .col-qty {
-  width: 5rem;
-  min-width: 5rem;
-  max-width: 5rem;
+.data-table.line-items-table .col-id {
+  width: 10%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.data-table.line-items-table .col-name {
+  width: 80%;
+  min-width: 0;
   box-sizing: border-box;
 }
 
 .data-table.line-items-table .col-qty {
-  white-space: nowrap;
-}
-
-.data-table.line-items-table .col-name {
-  width: 1%;
+  width: 10%;
   min-width: 0;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .data-table.line-items-table .col-actions {
