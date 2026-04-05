@@ -1290,6 +1290,8 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 
 .data-table.line-items-table {
   table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
 }
 
 .data-table.line-items-table thead th {
@@ -1329,21 +1331,22 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
   min-height: 2.65rem;
 }
 
-.data-table.line-items-table .col-id {
-  min-width: 4rem;
-  width: 8%;
-}
-
-.data-table.line-items-table .col-name {
-  width: 56%;
-  min-width: 0;
+/* Product ID and QTY share the same width; name fills the row between them and Actions */
+.data-table.line-items-table .col-id,
+.data-table.line-items-table .col-qty {
+  width: 5rem;
+  min-width: 5rem;
+  max-width: 5rem;
+  box-sizing: border-box;
 }
 
 .data-table.line-items-table .col-qty {
-  /* was 6rem; reduced by 60% → 40% of prior width */
-  width: 2.4rem;
-  min-width: 2.4rem;
   white-space: nowrap;
+}
+
+.data-table.line-items-table .col-name {
+  width: 1%;
+  min-width: 0;
 }
 
 .data-table.line-items-table .col-actions {
