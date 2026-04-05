@@ -111,8 +111,15 @@ export default function InvoiceLineItemRow({
         />
       </td>
       <td className="col-actions">
-        <button type="button" className="btn" onClick={onRemove} disabled={disableRemove}>
-          Remove
+        <button
+          type="button"
+          className="line-item-remove-btn"
+          onClick={onRemove}
+          disabled={disableRemove}
+          aria-label="Remove line"
+          title="Remove line"
+        >
+          ×
         </button>
       </td>
     </tr>

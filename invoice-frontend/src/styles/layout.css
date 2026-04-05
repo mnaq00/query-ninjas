@@ -523,7 +523,8 @@ body {
 
 button.clients-archive-btn,
 button.products-archive-btn,
-button.invoices-archive-btn {
+button.invoices-archive-btn,
+button.line-item-remove-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -545,7 +546,8 @@ button.invoices-archive-btn {
 
 button.clients-archive-btn:hover:not(:disabled),
 button.products-archive-btn:hover:not(:disabled),
-button.invoices-archive-btn:hover:not(:disabled) {
+button.invoices-archive-btn:hover:not(:disabled),
+button.line-item-remove-btn:hover:not(:disabled) {
   background: #ef4444;
   border-color: #f87171;
   color: #fff;
@@ -553,7 +555,8 @@ button.invoices-archive-btn:hover:not(:disabled) {
 
 button.clients-archive-btn:disabled,
 button.products-archive-btn:disabled,
-button.invoices-archive-btn:disabled {
+button.invoices-archive-btn:disabled,
+button.line-item-remove-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
