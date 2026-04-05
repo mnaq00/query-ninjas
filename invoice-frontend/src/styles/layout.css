@@ -1311,6 +1311,7 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 
 .data-table.line-items-table thead th.col-name {
   min-width: 0;
+  padding-left: 30%;
 }
 
 .data-table.line-items-table tbody tr {
