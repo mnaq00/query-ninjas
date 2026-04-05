@@ -14,6 +14,7 @@ import {
   getStoredClientId,
   extractId,
   archiveInvoice,
+  listClients,
 } from "../services/api";
 import { ErrorAlert, ErrorAlertAutoDismiss, formatApiError } from "../utils/formErrors";
 import PageBackButton from "../components/PageBackButton";
@@ -21,7 +22,7 @@ import RefreshTableButton from "../components/RefreshTableButton";
 import { useTimedTableRefreshSuccess } from "../hooks/useTimedTableRefreshSuccess";
 import InvoiceLineItemRow from "../components/InvoiceLineItemRow";
 import { clientDisplayNameFromSearchByClientResponse } from "../utils/searchByClient";
-import { clientDisplayName } from "../utils/clientRecord";
+import { clientDisplayName, clientRowId } from "../utils/clientRecord";
 import { unitPriceFromProductPayload } from "../utils/productRecord";
 
 const PAYMENT_STATUS_PAGE_SIZE = 8;
@@ -695,9 +696,15 @@ export default function Invoices() {
     const req = ++createClientNameReqSeq.current;
     setCreateClientNameLoading(true);
     try {
-      const data = await searchClientsByClientId(id);
+      const clients = await listClients();
       if (req !== createClientNameReqSeq.current) return;
-      setCreateClientNameHint(clientDisplayNameFromSearchByClientResponse(data, id) || "");
+      const match = Array.isArray(clients)
+        ? clients.find((c) => {
+            const rid = clientRowId(c);
+            return rid != null && Number(rid) === id;
+          })
+        : null;
+      setCreateClientNameHint(match ? clientDisplayName(match) || "" : "");
     } catch {
       if (req !== createClientNameReqSeq.current) return;
       setCreateClientNameHint("");
