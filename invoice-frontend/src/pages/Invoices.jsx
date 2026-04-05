@@ -1192,7 +1192,7 @@ export default function Invoices() {
     setLoading(true);
     try {
       await sendInvoiceEmail(id, "ready_to_send");
-      setInvoiceActionSuccess(titleCaseWords("Send request completed (requires SMTP on server)."));
+      setInvoiceActionSuccess("The email has been successfully sent.");
       void loadActionInvoiceClientNameByViewInvoiceStatus(id);
     } catch (err) {
       setInvoiceActionError(formatInvoicesSharedCardError(err));
