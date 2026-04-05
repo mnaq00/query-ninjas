@@ -1540,11 +1540,6 @@ export default function Invoices() {
           </label>
 
           <div className="line-items-table-section">
-            <div className="line-items-toolbar">
-              <button type="button" className="btn" onClick={addLine}>
-                {titleCaseWords("Add additional products/services")}
-              </button>
-            </div>
             <div className="table-wrap">
               <table className="data-table line-items-table">
                 <thead>
@@ -1569,6 +1564,11 @@ export default function Invoices() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="line-items-toolbar">
+              <button type="button" className="btn" onClick={addLine}>
+                {titleCaseWords("Add additional products/services")}
+              </button>
             </div>
           </div>
 

@@ -1277,6 +1277,10 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
   margin-bottom: 0.25rem;
 }
 
+.line-items-table-section > .table-wrap + .line-items-toolbar {
+  margin-top: 0.75rem;
+}
+
 .line-items-table-section .table-wrap {
   width: 100%;
 }
