@@ -232,7 +232,7 @@ func (h *InvoiceHandler) GetInvoicePDF(w http.ResponseWriter, r *http.Request) {
 }
 
 // Body must include "invoice_status": "ready_to_send" (or "ready to send").
-// Draft invoices cannot be sent until status is updated to ready_to_send.
+// Draft invoices are promoted to ready_to_send before send; UI should confirm with the user first.
 func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idParam := vars["id"]
@@ -258,7 +258,6 @@ func (h *InvoiceHandler) SendInvoice(w http.ResponseWriter, r *http.Request) {
 
 		if strings.HasPrefix(msg, "request body must include") ||
 			strings.HasPrefix(msg, "email send is only allowed") ||
-			strings.HasPrefix(msg, "cannot send email while invoice is draft") ||
 			msg == "client has no email address; cannot send invoice" ||
 			strings.HasPrefix(msg, "SMTP not configured") ||
 			strings.HasPrefix(msg, "SMTP_FROM not configured") {

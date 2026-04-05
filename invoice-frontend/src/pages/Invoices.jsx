@@ -1174,15 +1174,18 @@ export default function Invoices() {
       return;
     }
     if (isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)) {
-      setInvoiceActionError(titleCaseWords("Cannot send email while invoice is draft."));
-      return;
+      const draftOk = window.confirm(
+        "This invoice is currently a draft. Are you sure you would like to send invoice as an email?"
+      );
+      if (!draftOk) return;
+    } else {
+      const nameTrim = String(actionInvoiceClientHint).trim();
+      const namePart = nameTrim ? ` — ${nameTrim}` : "";
+      const ok = window.confirm(
+        titleCaseWords(`Send invoice email for invoice #${id}${namePart}?`)
+      );
+      if (!ok) return;
     }
-    const nameTrim = String(actionInvoiceClientHint).trim();
-    const namePart = nameTrim ? ` — ${nameTrim}` : "";
-    const ok = window.confirm(
-      titleCaseWords(`Send invoice email for invoice #${id}${namePart}?`)
-    );
-    if (!ok) return;
 
     setInvoiceActionError(null);
     setInvoiceActionSuccess("");
@@ -1190,6 +1193,7 @@ export default function Invoices() {
     try {
       await sendInvoiceEmail(id, "ready_to_send");
       setInvoiceActionSuccess(titleCaseWords("Send request completed (requires SMTP on server)."));
+      void loadActionInvoiceClientNameByViewInvoiceStatus(id);
     } catch (err) {
       setInvoiceActionError(formatInvoicesSharedCardError(err));
     } finally {
@@ -1634,7 +1638,9 @@ export default function Invoices() {
 
       <div className="card">
         <h2>Invoice Actions</h2>
-        <p className="hint">Mark paid or send email. Send is unavailable while invoice status is draft.</p>
+        <p className="hint">
+          Mark paid or send email. Draft invoices ask for confirmation before sending.
+        </p>
         <ErrorAlert error={invoiceActionError} />
         {invoiceActionSuccess ? <div className="alert alert-success">{invoiceActionSuccess}</div> : null}
         <div className="form-grid invoices-stretch-actions-form">
@@ -1677,21 +1683,7 @@ export default function Invoices() {
             <button type="button" className="btn" disabled={loading || !actionId} onClick={handlePaid}>
               Mark Paid
             </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={
-                loading ||
-                !actionId ||
-                isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)
-              }
-              title={
-                isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)
-                  ? titleCaseWords("Set invoice to ready to send before emailing.")
-                  : undefined
-              }
-              onClick={handleSend}
-            >
+            <button type="button" className="btn" disabled={loading || !actionId} onClick={handleSend}>
               Send Email
             </button>
           </div>

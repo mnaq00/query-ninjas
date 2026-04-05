@@ -524,7 +524,7 @@ func (s *InvoiceService) RenderInvoicePDF(tenantBusinessID uint, id uint) (pdf [
 }
 
 // bodyInvoiceStatus must normalize to ready_to_send (e.g. JSON "ready_to_send" or "ready to send").
-// Invoices still in draft cannot be emailed; update status to ready_to_send first (e.g. via PUT).
+// If the invoice is draft, it is promoted to ready_to_send in the DB before sending (UI should confirm first).
 func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyInvoiceStatus string) error {
 	if tenantBusinessID == 0 {
 		return errors.New("business context required")
@@ -546,11 +546,17 @@ func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyIn
 	cur := models.NormalizeInvoiceStatus(invoice.InvoiceStatus)
 	switch cur {
 	case models.InvoiceStatusDraft:
-		return errors.New("cannot send email while invoice is draft; update invoice_status to ready_to_send first")
+		if err := s.Repo.SetInvoiceLifecycleStatus(id, tenantBusinessID, models.InvoiceStatusReadyToSend); err != nil {
+			return err
+		}
+		invoice, err = s.Repo.GetInvoiceByIDForBusiness(id, tenantBusinessID)
+		if err != nil {
+			return err
+		}
 	case models.InvoiceStatusReadyToSend, models.InvoiceStatusSentDownloaded:
 		// ok — send now or resend after a previous send
 	default:
-		return errors.New("email send is only allowed when invoice is ready_to_send or sent/downloaded")
+		return errors.New("email send is only allowed when invoice is draft, ready_to_send, or sent/downloaded")
 	}
 
 	invoice, err = s.refreshInvoiceLinesFromCatalogAndPersist(invoice)
