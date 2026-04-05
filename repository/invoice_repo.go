@@ -19,6 +19,7 @@ type InvoiceRepository interface {
 	SetInvoiceDraft(id, businessID uint) (*models.Invoice, error)
 	SetInvoiceLifecycleStatus(id, businessID uint, invoiceStatus string) error
 	UpdateInvoice(id uint, invoice *models.Invoice) error
+	SetInvoiceIssuerSnapshot(id, businessID uint, invoice *models.Invoice) error
 	GetInvoiceByIDForBusiness(id, businessID uint) (*models.Invoice, error)
 	UpdateInvoicePaymentStatus(id, businessID uint, status string) error
 	SyncOverdueBatch(now time.Time) error
@@ -151,6 +152,31 @@ func (r *InvoiceRepo) UpdateInvoice(id uint, invoice *models.Invoice) error {
 
 		return nil
 	})
+}
+
+// SetInvoiceIssuerSnapshot writes only issuer snapshot columns (legacy backfill / first PDF freeze).
+func (r *InvoiceRepo) SetInvoiceIssuerSnapshot(id, businessID uint, invoice *models.Invoice) error {
+	if invoice == nil {
+		return errors.New("invoice required")
+	}
+	updates := map[string]interface{}{
+		"issuer_business_name": invoice.IssuerBusinessName,
+		"issuer_address":       invoice.IssuerAddress,
+		"issuer_phone":         invoice.IssuerPhone,
+		"issuer_email":         invoice.IssuerEmail,
+		"issuer_vat_id":        invoice.IssuerVATID,
+		"issuer_logo_url":      invoice.IssuerLogoURL,
+	}
+	res := db.DB.Model(&models.Invoice{}).
+		Where("id = ? AND business_id = ?", id, businessID).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // GetInvoiceByIDForBusiness loads an invoice and lines only if it belongs to the business.

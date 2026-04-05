@@ -292,6 +292,30 @@ func (s *InvoiceService) loadBusinessForInvoice(invoice *models.Invoice) (*model
 	return profile, nil
 }
 
+// ensureIssuerSnapshotPersisted freezes seller details on legacy invoices (empty issuer fields)
+// by copying the live business profile once before PDF/email; later profile edits do not affect this row.
+func (s *InvoiceService) ensureIssuerSnapshotPersisted(invoice *models.Invoice) error {
+	if invoice == nil {
+		return errors.New("invoice required")
+	}
+	if invoiceHasIssuerSnapshot(invoice) {
+		return nil
+	}
+	if s.BusinessService == nil {
+		return errors.New("business service not configured")
+	}
+	bid := invoice.BusinessID
+	if bid == 0 {
+		bid = 1
+	}
+	profile, err := s.BusinessService.GetBusinessProfile(bid)
+	if err != nil {
+		return fmt.Errorf("business not found for business_id %d", bid)
+	}
+	copyBusinessProfileToInvoiceSnapshot(invoice, profile)
+	return s.Repo.SetInvoiceIssuerSnapshot(invoice.ID, invoice.BusinessID, invoice)
+}
+
 // Musa
 func (s *InvoiceService) CreateInvoice(tenantBusinessID uint, req *models.Invoice) error {
 	if tenantBusinessID == 0 {
@@ -581,6 +605,10 @@ func (s *InvoiceService) RenderInvoicePDF(tenantBusinessID uint, id uint) (pdf [
 		return nil, "", errors.New("invoice has no bill-to name; client may be missing")
 	}
 
+	if err := s.ensureIssuerSnapshotPersisted(invoice); err != nil {
+		return nil, "", err
+	}
+
 	bizPtr, err := s.loadBusinessForInvoice(invoice)
 	if err != nil {
 		return nil, "", err
@@ -650,6 +678,10 @@ func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyIn
 	billName, toEmail, _ := invoiceBillToFields(invoice, client)
 	if strings.TrimSpace(toEmail) == "" {
 		return errors.New("invoice has no billing email snapshot; cannot send invoice")
+	}
+
+	if err := s.ensureIssuerSnapshotPersisted(invoice); err != nil {
+		return err
 	}
 
 	bizPtr, err := s.loadBusinessForInvoice(invoice)
