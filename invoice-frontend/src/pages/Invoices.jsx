@@ -336,6 +336,61 @@ function clientNameFromViewInvoiceStatusResponse(data, targetInvoiceId) {
   return matchRow(data);
 }
 
+function invoiceRowMetaFromViewInvoiceStatusResponse(data, targetInvoiceId) {
+  const n = Number(targetInvoiceId);
+  if (!Number.isFinite(n) || n <= 0) return { clientName: "", documentStatus: "" };
+  const matchRow = (raw) => {
+    if (!raw || typeof raw !== "object") return null;
+    const id = historyInvoiceNumericId(raw);
+    if (id == null || Number(id) !== n) return null;
+    const name = historyInvoiceClientName(raw);
+    return {
+      clientName: name === "—" ? "" : name,
+      documentStatus: historyInvoiceDocumentStatus(raw),
+    };
+  };
+  const list = getInvoicesListFromSearchResponse(data);
+  for (const raw of list) {
+    const meta = matchRow(raw);
+    if (meta) return meta;
+  }
+  const meta = matchRow(data);
+  return meta || { clientName: "", documentStatus: "" };
+}
+
+/** Client name + invoice_status for Invoice Actions (ViewInvoiceStatus / payment buckets). */
+async function resolveInvoiceActionHintsFromViewInvoiceStatusApis(invoiceIdNum) {
+  const id = Number(invoiceIdNum);
+  if (!Number.isFinite(id) || id <= 0) return { clientName: "", documentStatus: "" };
+  let meta = { clientName: "", documentStatus: "" };
+  try {
+    const data = await viewInvoiceStatus({ invoice_id: id });
+    meta = invoiceRowMetaFromViewInvoiceStatusResponse(data, id);
+  } catch {
+    /* invoice_id query may be unsupported */
+  }
+  if (!meta.clientName && !meta.documentStatus) {
+    for (const status of ["unpaid", "paid", "overdue"]) {
+      try {
+        const data = await listInvoicesByPaymentStatus(status);
+        meta = invoiceRowMetaFromViewInvoiceStatusResponse(data, id);
+        if (meta.clientName || meta.documentStatus) break;
+      } catch {
+        /* try next status */
+      }
+    }
+  }
+  return meta;
+}
+
+function isDraftInvoiceDocumentStatus(s) {
+  const t = String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return t === "draft";
+}
+
 /** Client name for an invoice via GET /invoices/ViewInvoiceStatus (invoice_id if supported, else scan by payment status). */
 async function resolveClientNameFromViewInvoiceStatusApis(invoiceIdNum) {
   const id = Number(invoiceIdNum);
@@ -569,6 +624,7 @@ export default function Invoices() {
 
   const [actionId, setActionId] = useState("");
   const [actionInvoiceClientHint, setActionInvoiceClientHint] = useState("");
+  const [actionInvoiceDocumentStatus, setActionInvoiceDocumentStatus] = useState("");
   const [actionInvoiceClientLoading, setActionInvoiceClientLoading] = useState(false);
   const [invoiceActionError, setInvoiceActionError] = useState(null);
   const [invoiceActionSuccess, setInvoiceActionSuccess] = useState("");
@@ -851,15 +907,17 @@ export default function Invoices() {
     const id = Number(invId);
     if (!Number.isFinite(id) || id <= 0) {
       setActionInvoiceClientHint("");
+      setActionInvoiceDocumentStatus("");
       setActionInvoiceClientLoading(false);
       return;
     }
     const req = ++actionInvoiceViewStatusReqSeq.current;
     setActionInvoiceClientLoading(true);
     try {
-      const name = await resolveClientNameFromViewInvoiceStatusApis(id);
+      const meta = await resolveInvoiceActionHintsFromViewInvoiceStatusApis(id);
       if (req !== actionInvoiceViewStatusReqSeq.current) return;
-      setActionInvoiceClientHint(name);
+      setActionInvoiceClientHint(meta.clientName);
+      setActionInvoiceDocumentStatus(meta.documentStatus);
     } finally {
       if (req === actionInvoiceViewStatusReqSeq.current) {
         setActionInvoiceClientLoading(false);
@@ -917,6 +975,7 @@ export default function Invoices() {
     const num = Number(raw);
     if (!raw || !Number.isFinite(num) || num <= 0) {
       setActionInvoiceClientHint("");
+      setActionInvoiceDocumentStatus("");
       setActionInvoiceClientLoading(false);
     }
   }
@@ -1112,6 +1171,10 @@ export default function Invoices() {
     const raw = String(actionId).trim();
     const id = Number(raw);
     if (!raw || !Number.isFinite(id) || id <= 0) {
+      return;
+    }
+    if (isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)) {
+      setInvoiceActionError(titleCaseWords("Cannot send email while invoice is draft."));
       return;
     }
     const nameTrim = String(actionInvoiceClientHint).trim();
@@ -1571,7 +1634,7 @@ export default function Invoices() {
 
       <div className="card">
         <h2>Invoice Actions</h2>
-        <p className="hint">Mark paid or send email.</p>
+        <p className="hint">Mark paid or send email. Send is unavailable while invoice status is draft.</p>
         <ErrorAlert error={invoiceActionError} />
         {invoiceActionSuccess ? <div className="alert alert-success">{invoiceActionSuccess}</div> : null}
         <div className="form-grid invoices-stretch-actions-form">
@@ -1614,7 +1677,21 @@ export default function Invoices() {
             <button type="button" className="btn" disabled={loading || !actionId} onClick={handlePaid}>
               Mark Paid
             </button>
-            <button type="button" className="btn" disabled={loading || !actionId} onClick={handleSend}>
+            <button
+              type="button"
+              className="btn"
+              disabled={
+                loading ||
+                !actionId ||
+                isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)
+              }
+              title={
+                isDraftInvoiceDocumentStatus(actionInvoiceDocumentStatus)
+                  ? titleCaseWords("Set invoice to ready to send before emailing.")
+                  : undefined
+              }
+              onClick={handleSend}
+            >
               Send Email
             </button>
           </div>
