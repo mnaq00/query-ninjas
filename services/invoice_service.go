@@ -200,43 +200,6 @@ func (s *InvoiceService) enrichInvoiceItemsFromProducts(items *[]models.InvoiceI
 	return nil
 }
 
-// refreshInvoiceLinesFromCatalogAndPersist reloads each line from the product table, recomputes line totals
-// and invoice subtotal/tax/total, and saves. Skipped for paid invoices so amounts stay frozen after payment.
-func (s *InvoiceService) refreshInvoiceLinesFromCatalogAndPersist(inv *models.Invoice) (*models.Invoice, error) {
-	if strings.EqualFold(strings.TrimSpace(inv.Customer_payment_status), models.PaymentStatusPaid) {
-		return inv, nil
-	}
-	if len(inv.Items) == 0 {
-		return nil, errors.New("invoice has no line items")
-	}
-	for i := range inv.Items {
-		if err := s.enrichInvoiceItemFromProduct(&inv.Items[i], inv.BusinessID, true); err != nil {
-			return nil, err
-		}
-	}
-	var subtotal float64
-	for i := range inv.Items {
-		item := &inv.Items[i]
-		if item.Quantity <= 0 {
-			return nil, errors.New("item quantity must be greater than 0")
-		}
-		item.LineTotal = item.Price * float64(item.Quantity)
-		subtotal += item.LineTotal
-	}
-	inv.Subtotal = subtotal
-	inv.TaxAmount = subtotal * (inv.TaxRate / 100.0)
-	inv.Total = inv.Subtotal + inv.TaxAmount
-
-	for i := range inv.Items {
-		inv.Items[i].Model = gorm.Model{}
-		inv.Items[i].InvoiceID = inv.ID
-	}
-	if err := s.Repo.UpdateInvoice(inv.ID, inv); err != nil {
-		return nil, err
-	}
-	return s.Repo.GetInvoiceByIDForBusiness(inv.ID, inv.BusinessID)
-}
-
 func validInvoiceLifecycle(s string) bool {
 	switch models.NormalizeInvoiceStatus(s) {
 	case models.InvoiceStatusDraft, models.InvoiceStatusReadyToSend, models.InvoiceStatusSentDownloaded:
@@ -631,10 +594,6 @@ func (s *InvoiceService) RenderInvoicePDF(tenantBusinessID uint, id uint) (pdf [
 	if err != nil {
 		return nil, "", err
 	}
-	invoice, err = s.refreshInvoiceLinesFromCatalogAndPersist(invoice)
-	if err != nil {
-		return nil, "", err
-	}
 	if s.ClientRepo == nil {
 		return nil, "", errors.New("client repository not configured")
 	}
@@ -707,11 +666,6 @@ func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyIn
 		// ok — send now or resend after a previous send
 	default:
 		return errors.New("email send is only allowed when invoice is draft, ready_to_send, or sent/downloaded")
-	}
-
-	invoice, err = s.refreshInvoiceLinesFromCatalogAndPersist(invoice)
-	if err != nil {
-		return err
 	}
 
 	if s.ClientRepo == nil {
