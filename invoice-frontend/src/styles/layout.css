@@ -1330,9 +1330,17 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
 }
 
 .data-table.line-items-table .col-actions {
-  width: 1%;
+  /* Fixed min width so the remove control is never squeezed to zero with table-layout: fixed */
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 3rem;
   white-space: nowrap;
   text-align: right;
+  vertical-align: middle;
+}
+
+.data-table.line-items-table .col-actions .line-item-remove-btn {
+  flex-shrink: 0;
 }
 
 .data-table.line-items-table td.col-qty {
