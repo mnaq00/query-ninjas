@@ -1324,13 +1324,18 @@ label.create-invoice-client-sublabel[for="invoice-history-client-id"] {
   padding: 0.45rem 0.65rem 0.55rem;
 }
 
+.data-table.line-items-table tbody td .line-item-name-input,
+.data-table.line-items-table tbody td input[type="number"] {
+  min-height: 2.65rem;
+}
+
 .data-table.line-items-table .col-id {
   min-width: 4rem;
-  width: 10%;
+  width: 8%;
 }
 
 .data-table.line-items-table .col-name {
-  width: 42%;
+  width: 56%;
   min-width: 0;
 }
 
