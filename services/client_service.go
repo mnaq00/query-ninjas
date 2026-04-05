@@ -28,6 +28,24 @@ func (s *ClientService) ListClients(businessID uint) ([]models.Client, error) {
 	return s.Repo.ListClientsByBusinessID(businessID)
 }
 
+// GetClient returns one client for the tenant or ErrClientNotFound.
+func (s *ClientService) GetClient(businessID, clientID uint) (*models.Client, error) {
+	if businessID == 0 {
+		return nil, errors.New("business context required")
+	}
+	if clientID == 0 {
+		return nil, apperrors.NewValidation(map[string]string{"id": "is required"})
+	}
+	c, err := s.Repo.GetClientByID(businessID, clientID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.ErrClientNotFound
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
 func (s *ClientService) AddClient(businessID uint, name, email, billingAddress string) (*models.Client, error) {
 	if businessID == 0 {
 		return nil, errors.New("business context required")

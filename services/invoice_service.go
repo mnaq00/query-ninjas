@@ -51,6 +51,24 @@ func invoiceBillToFields(inv *models.Invoice, client *models.Client) (name, emai
 	return name, email, addr
 }
 
+func invoiceHasBillingSnapshot(inv *models.Invoice) bool {
+	if inv == nil {
+		return false
+	}
+	return strings.TrimSpace(inv.CustomerName) != "" ||
+		strings.TrimSpace(inv.BillingEmail) != "" ||
+		strings.TrimSpace(inv.BillingAddress) != ""
+}
+
+func copyClientToInvoiceBilling(inv *models.Invoice, c *models.Client) {
+	if inv == nil || c == nil {
+		return
+	}
+	inv.CustomerName = strings.TrimSpace(c.Name)
+	inv.BillingEmail = strings.TrimSpace(c.Email)
+	inv.BillingAddress = strings.TrimSpace(c.BillingAddress)
+}
+
 func copyBusinessProfileToInvoiceSnapshot(inv *models.Invoice, biz *models.Business) {
 	if inv == nil || biz == nil {
 		return
@@ -314,6 +332,30 @@ func (s *InvoiceService) ensureIssuerSnapshotPersisted(invoice *models.Invoice) 
 	}
 	copyBusinessProfileToInvoiceSnapshot(invoice, profile)
 	return s.Repo.SetInvoiceIssuerSnapshot(invoice.ID, invoice.BusinessID, invoice)
+}
+
+// ensureBillingSnapshotPersisted freezes bill-to on legacy invoices (empty customer_name, billing_email, billing_address)
+// by copying the client row once before PDF/email.
+func (s *InvoiceService) ensureBillingSnapshotPersisted(invoice *models.Invoice, client *models.Client) error {
+	if invoice == nil {
+		return errors.New("invoice required")
+	}
+	if invoiceHasBillingSnapshot(invoice) {
+		return nil
+	}
+	if s.ClientRepo == nil {
+		return errors.New("client repository not configured")
+	}
+	c := client
+	if c == nil {
+		var err error
+		c, err = s.ClientRepo.GetClientByID(invoice.BusinessID, invoice.ClientID)
+		if err != nil {
+			return errors.New("client not found")
+		}
+	}
+	copyClientToInvoiceBilling(invoice, c)
+	return s.Repo.SetInvoiceBillingSnapshot(invoice.ID, invoice.BusinessID, invoice)
 }
 
 // Musa
@@ -605,6 +647,10 @@ func (s *InvoiceService) RenderInvoicePDF(tenantBusinessID uint, id uint) (pdf [
 		return nil, "", errors.New("invoice has no bill-to name; client may be missing")
 	}
 
+	if err := s.ensureBillingSnapshotPersisted(invoice, client); err != nil {
+		return nil, "", err
+	}
+
 	if err := s.ensureIssuerSnapshotPersisted(invoice); err != nil {
 		return nil, "", err
 	}
@@ -678,6 +724,10 @@ func (s *InvoiceService) SendInvoiceEmail(tenantBusinessID uint, id uint, bodyIn
 	billName, toEmail, _ := invoiceBillToFields(invoice, client)
 	if strings.TrimSpace(toEmail) == "" {
 		return errors.New("invoice has no billing email snapshot; cannot send invoice")
+	}
+
+	if err := s.ensureBillingSnapshotPersisted(invoice, client); err != nil {
+		return err
 	}
 
 	if err := s.ensureIssuerSnapshotPersisted(invoice); err != nil {

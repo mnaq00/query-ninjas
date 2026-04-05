@@ -23,6 +23,32 @@ type CreateClientRequest struct {
 	BillingAddress string `json:"billing_address"`
 }
 
+func (h *ClientHandler) GetClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	params := mux.Vars(r)
+	idInt, err := strconv.Atoi(params["id"])
+	if err != nil || idInt <= 0 {
+		writeJSONError(w, apperrors.NewValidation(map[string]string{"id": "invalid client id"}))
+		return
+	}
+
+	client, err := h.ClientService.GetClient(middleware.BusinessIDFromRequest(r), uint(idInt))
+	if err != nil {
+		writeJSONError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"client": client,
+	})
+}
+
 func (h *ClientHandler) ListClients(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
