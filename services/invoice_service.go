@@ -51,6 +51,75 @@ func invoiceBillToFields(inv *models.Invoice, client *models.Client) (name, emai
 	return name, email, addr
 }
 
+func copyBusinessProfileToInvoiceSnapshot(inv *models.Invoice, biz *models.Business) {
+	if inv == nil || biz == nil {
+		return
+	}
+	inv.IssuerBusinessName = strings.TrimSpace(biz.BusinessName)
+	inv.IssuerAddress = strings.TrimSpace(biz.Address)
+	inv.IssuerPhone = strings.TrimSpace(biz.Phone)
+	inv.IssuerEmail = strings.TrimSpace(biz.Email)
+	inv.IssuerVATID = strings.TrimSpace(biz.VATID)
+	if biz.LogoURL != nil {
+		s := strings.TrimSpace(*biz.LogoURL)
+		if s != "" {
+			inv.IssuerLogoURL = new(string)
+			*inv.IssuerLogoURL = s
+		} else {
+			inv.IssuerLogoURL = nil
+		}
+	} else {
+		inv.IssuerLogoURL = nil
+	}
+}
+
+func invoiceHasIssuerSnapshot(inv *models.Invoice) bool {
+	return inv != nil && strings.TrimSpace(inv.IssuerBusinessName) != ""
+}
+
+func businessFromInvoiceSnapshot(inv *models.Invoice) *models.Business {
+	if !invoiceHasIssuerSnapshot(inv) {
+		return nil
+	}
+	b := &models.Business{
+		BusinessName: inv.IssuerBusinessName,
+		Address:      inv.IssuerAddress,
+		Phone:        inv.IssuerPhone,
+		Email:        inv.IssuerEmail,
+		VATID:        inv.IssuerVATID,
+	}
+	if inv.IssuerLogoURL != nil {
+		s := strings.TrimSpace(*inv.IssuerLogoURL)
+		if s != "" {
+			b.LogoURL = new(string)
+			*b.LogoURL = s
+		}
+	}
+	return b
+}
+
+func copyIssuerSnapshotFromExisting(dst, src *models.Invoice) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.IssuerBusinessName = src.IssuerBusinessName
+	dst.IssuerAddress = src.IssuerAddress
+	dst.IssuerPhone = src.IssuerPhone
+	dst.IssuerEmail = src.IssuerEmail
+	dst.IssuerVATID = src.IssuerVATID
+	if src.IssuerLogoURL != nil {
+		s := strings.TrimSpace(*src.IssuerLogoURL)
+		if s != "" {
+			dst.IssuerLogoURL = new(string)
+			*dst.IssuerLogoURL = s
+		} else {
+			dst.IssuerLogoURL = nil
+		}
+	} else {
+		dst.IssuerLogoURL = nil
+	}
+}
+
 // calendarDatePastDue is true when today's calendar date (UTC) is after the due date's calendar date (UTC).
 func calendarDatePastDue(due time.Time, now time.Time) bool {
 	if due.IsZero() {
@@ -203,9 +272,12 @@ func (s *InvoiceService) reloadInvoiceIfReconciled(inv *models.Invoice) (*models
 	return s.Repo.GetInvoiceByIDForBusiness(inv.ID, inv.BusinessID)
 }
 
-// loadBusinessForInvoice loads the business profile for PDF/email using invoice.BusinessID.
-// If BusinessID is 0 (legacy row), it falls back to ID 1.
+// loadBusinessForInvoice returns issuer details for PDF/email: frozen snapshot on the invoice when present,
+// otherwise the live business profile (legacy invoices). If BusinessID is 0, live profile uses ID 1.
 func (s *InvoiceService) loadBusinessForInvoice(invoice *models.Invoice) (*models.Business, error) {
+	if b := businessFromInvoiceSnapshot(invoice); b != nil {
+		return b, nil
+	}
 	if s.BusinessService == nil {
 		return nil, errors.New("business service not configured")
 	}
@@ -230,9 +302,11 @@ func (s *InvoiceService) CreateInvoice(tenantBusinessID uint, req *models.Invoic
 	if s.BusinessService == nil {
 		return errors.New("business service not configured")
 	}
-	if _, err := s.BusinessService.GetBusinessProfile(req.BusinessID); err != nil {
+	profile, err := s.BusinessService.GetBusinessProfile(req.BusinessID)
+	if err != nil {
 		return errors.New("business not found")
 	}
+	copyBusinessProfileToInvoiceSnapshot(req, profile)
 
 	if req.ClientID == 0 {
 		return errors.New("client id is required")
@@ -404,6 +478,8 @@ func (s *InvoiceService) UpdateInvoice(tenantBusinessID uint, id uint, invoice *
 	invoice.Subtotal = subtotal
 	invoice.TaxAmount = subtotal * (invoice.TaxRate / 100)
 	invoice.Total = invoice.Subtotal + invoice.TaxAmount
+
+	copyIssuerSnapshotFromExisting(invoice, existing)
 
 	if err := s.Repo.UpdateInvoice(id, invoice); err != nil {
 		return nil, err

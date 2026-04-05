@@ -54,6 +54,14 @@ type Invoice struct {
 	InvoiceNumber           string        `json:"invoice_number" gorm:"unique"`
 	BusinessID              uint          `json:"business_id" gorm:"index"`
 	ClientID                uint          `json:"client_id"`
+	// Issuer* fields are copied from the business profile at invoice create so later profile edits
+	// do not change PDFs/emails for existing invoices.
+	IssuerBusinessName string  `json:"issuer_business_name" gorm:"type:varchar(255)"`
+	IssuerAddress      string  `json:"issuer_address" gorm:"type:text"`
+	IssuerPhone        string  `json:"issuer_phone" gorm:"type:varchar(64)"`
+	IssuerEmail        string  `json:"issuer_email" gorm:"type:varchar(255)"`
+	IssuerVATID        string  `json:"issuer_vat_id" gorm:"type:varchar(128)"`
+	IssuerLogoURL      *string `json:"issuer_logo_url" gorm:"type:varchar(512)"`
 	// BillingEmail and BillingAddress are frozen at invoice create (or when client_id changes on update)
 	// so PDF/email stay correct if the client record is edited later.
 	BillingEmail            string        `json:"billing_email" gorm:"type:varchar(255)"`
